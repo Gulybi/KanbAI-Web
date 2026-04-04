@@ -1,0 +1,22 @@
+---
+description: Mandatory standards for automated testing (Jest/Jasmine), HTTP mocking, and global error handling.
+globs: **/*.spec.ts, **/*.ts
+---
+# Testing & Observability Standards (@rule_testing_observability)
+
+These rules apply whenever writing automated tests or implementing error handling within the Angular application.
+
+## 1. 🧪 Automated Testing (Jest / Jasmine)
+- **Framework:** Use the project's configured testing framework (Jest or Jasmine) along with Angular's `TestBed`.
+- **Structure (AAA):** Every test MUST follow the Arrange-Act-Assert pattern.
+- **Naming Convention:** Use clear `describe` and `it` blocks. e.g., `it('should display error message when login fails')`.
+- **Test Coverage:** Do not just test the TypeScript class logic. You must test DOM interactions (e.g., clicking a button calls the correct method, inputs update the reactive form).
+
+## 2. 🎭 Mocking & Isolation
+- **No Real HTTP Calls:** NEVER hit a real API in unit tests. Always use `HttpTestingController` or `provideHttpClientTesting()` to mock HTTP responses.
+- **Service Mocking:** When testing components, mock complex injected dependencies (like State stores or complex Services) using spy objects (e.g., `jasmine.createSpyObj` or `jest.fn()`) to isolate the component.
+
+## 3. 🔭 Observability & Error Handling
+- **Global Error Handler:** Unhandled frontend exceptions should be caught by implementing Angular's `ErrorHandler` interface, preventing the UI from silently failing.
+- **HTTP Error Handling:** Every API call or RxJS pipeline involving external data MUST have error handling (e.g., `catchError` operator) to gracefully degrade the UI (e.g., showing a Toast or Snack bar to the user).
+- **Clean Console:** Do not leave `console.log()` statements in production code. Use a dedicated LoggerService if advanced client-side logging is required.
