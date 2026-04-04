@@ -1,0 +1,24 @@
+---
+description: Strict Angular coding standards, TypeScript best practices, and frontend architecture guidelines.
+globs: **/*.ts, **/*.html, **/*.scss
+---
+# Angular Coding Standards & Best Practices (@rule_code_standards)
+
+These rules dictate how TypeScript, HTML, and SCSS should be written, structured, and optimized in this Angular project. They apply strictly to any agent modifying or generating frontend files.
+
+## 1. 🏗️ Modern Angular & Clean Code
+- **Standalone Components:** Default to using Standalone components, directives, and pipes. Do not use `NgModules` unless working with legacy code.
+- **Signals & Control Flow:** Strongly prefer Angular Signals for reactive state over standard variables. Use the modern control flow syntax (`@if`, `@for`, `@switch`) in HTML templates instead of `*ngIf` and `*ngFor`.
+- **Strict Typing:** Always use strict TypeScript types. Avoid `any`. Define explicit `interface` or `type` aliases for all data structures.
+- **Component Architecture:** Strictly separate Smart (Container) components (which inject services and manage state) from Dumb (Presentational) components (which only rely on `@Input()` and `@Output()`).
+
+## 2. ⚡ Performance & Change Detection
+- **OnPush Change Detection:** Always set `changeDetection: ChangeDetectionStrategy.OnPush` on new components to prevent unnecessary re-renders.
+- **Lazy Loading:** Ensure routes and heavy standalone components are lazy-loaded using `loadComponent` or `loadChildren`.
+
+## 3. 🔄 RxJS & Memory Leak Prevention
+- **Unsubscribe is Mandatory:** NEVER leave an open RxJS subscription in a component. You MUST clean up subscriptions using `takeUntilDestroyed()`, or ideally, avoid manual `.subscribe()` entirely by using the `AsyncPipe` in the template or converting Observables to Signals (`toSignal`).
+- **Avoid Nested Subscriptions:** Do not nest `.subscribe()` calls. Use higher-order mapping operators like `switchMap`, `mergeMap`, or `concatMap`.
+
+## 4. 🎨 Styling
+- **Encapsulation:** Rely on Angular's default ViewEncapsulation. Do not use `::ng-deep` unless absolutely necessary to override a 3rd-party library style.

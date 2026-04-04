@@ -1,0 +1,24 @@
+---
+description: Mandatory security protocols, XSS prevention, and token management for the Angular frontend.
+globs: **/*.ts, **/*.html
+---
+# Security & Safety Standards (@rule_security_safety)
+
+These rules dictate the security baseline for all frontend development. The frontend runs in the user's browser, meaning **all code and environment variables are public**.
+
+## 1. 🛑 Secret Management
+- **NO SECRETS IN FRONTEND:** NEVER put API keys, backend passwords, JWT secrets, or sensitive tokens in the Angular source code or `environment.ts` files. 
+- **Environment Variables:** Only non-sensitive configuration (like the base API URL or public analytics keys) belongs in `environment.ts`.
+
+## 2. 🛡️ XSS (Cross-Site Scripting) Prevention
+- **Trust Angular:** Always rely on Angular's default DOM sanitization. 
+- **Avoid innerHTML:** Do not use `[innerHTML]` to render dynamic content unless absolutely necessary.
+- **Never Bypass Sanitizer blindly:** Never use `DomSanitizer.bypassSecurityTrustHtml` without explicitly confirming with the user, and only if the input has been strictly scrubbed.
+
+## 3. 🔐 Authentication & Authorization
+- **Route Guards:** Always protect authenticated routes using Functional Route Guards (`CanActivateFn`). Do not allow users to navigate to private pages without a valid session.
+- **Token Handling:** Use HTTP Interceptors (`HttpInterceptorFn`) to automatically attach authorization headers (e.g., Bearer tokens) to outgoing API requests.
+- **Storage:** Prefer secure mechanisms for token storage. If using `localStorage` or `sessionStorage`, be aware of XSS risks. (HttpOnly cookies handled by the backend are the safest).
+
+## 4. 🤐 Data Privacy & Console Logging
+- **No PII in Console:** Ensure that Personally Identifiable Information (PII) such as passwords, email addresses, or raw tokens are NEVER logged to the browser console (`console.log`).
