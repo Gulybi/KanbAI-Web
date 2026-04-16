@@ -141,6 +141,29 @@ Agent({
 })
 ```
 
+### 7. qa-tester
+**Purpose:** Write comprehensive test suites for components and services
+
+**When to use:**
+- After developer implements code
+- Before marking feature complete
+- Need to ensure test coverage and quality
+
+**Output:** Test files (`.spec.ts`) with:
+- Unit tests for components/services
+- Integration tests for user flows
+- Coverage report (>80% target)
+- Acceptance criteria verification
+
+**Invocation:**
+```javascript
+Agent({
+  description: "Write test suite",
+  subagent_type: "qa-tester",
+  prompt: "Create comprehensive test suite for dashboard feature. Read docs/handoffs/issue_42_tech_spec.md for requirements. Cover all acceptance criteria and ensure >80% coverage."
+})
+```
+
 ## Typical Workflow
 
 ### Scenario: New Feature from GitHub Issue
@@ -176,6 +199,17 @@ Agent({
 // developer will internally invoke build-verifier after implementation
 
 // Wait for completion, review code changes
+
+// Step 4: Write tests
+Agent({
+  description: "Write test suite",
+  subagent_type: "qa-tester",
+  prompt: "Create comprehensive test suite for dashboard feature. Read docs/handoffs/issue_42_tech_spec.md for requirements and acceptance criteria. Ensure coverage >80%."
+})
+
+// Wait for completion, review tests and coverage
+
+// Step 5: Manual QA and code review by human
 ```
 
 ## Agent Characteristics
@@ -185,6 +219,7 @@ Agent({
 | product-manager | ✅ | ❌ | ❌ | Markdown doc |
 | staff-engineer | ✅ | ❌ | ✅ (scanner, bridge) | Markdown doc |
 | developer | ✅ | ✅ | ✅ (build-verifier) | Code files + doc update |
+| qa-tester | ✅ | ✅ (tests only) | ❌ | Test files + coverage report |
 | codebase-scanner | ✅ | ❌ | ❌ | Structured report |
 | build-verifier | ❌ | ❌ | ❌ | Structured report |
 | backend-api-bridge | ✅ | ❌ | ❌ | Markdown doc |

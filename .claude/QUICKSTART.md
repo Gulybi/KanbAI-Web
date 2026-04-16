@@ -25,6 +25,13 @@ Agent({
   subagent_type: "developer",
   prompt: "Implement feature from docs/handoffs/issue_42_tech_spec.md."
 })
+
+// 4. Write tests
+Agent({
+  description: "Write test suite",
+  subagent_type: "qa-tester",
+  prompt: "Create test suite for issue #42. Read tech spec for requirements. Cover all acceptance criteria."
+})
 ```
 
 That's it! Each agent creates handoff documents for the next phase.
@@ -36,6 +43,7 @@ That's it! Each agent creates handoff documents for the next phase.
 | **product-manager** | GitHub issue → Business requirements | `issue_N_context.md` |
 | **staff-engineer** | Requirements → Technical design | `issue_N_tech_spec.md` |
 | **developer** | Tech spec → Working code | Angular files |
+| **qa-tester** | Code → Test suite | `.spec.ts` files + coverage |
 | **codebase-scanner** | Maps current architecture | Report |
 | **build-verifier** | Runs build + tests | Pass/fail report |
 | **backend-api-bridge** | Backend → TS interfaces | `backend_api_map.md` |
@@ -56,6 +64,9 @@ That's it! Each agent creates handoff documents for the next phase.
 
 ### "Did my code break anything?"
 → Use **build-verifier** (or developer does this automatically)
+
+### "I need to write tests for this feature"
+→ Use **qa-tester**
 
 ### "What does the backend API expect?"
 → Use **backend-api-bridge**
@@ -120,8 +131,30 @@ The developer will:
 - Updated routing
 - Updated tech spec with status
 
-### Phase 4: Review (Manual)
-You review the code, test in browser, then commit or request changes.
+### Phase 4: Testing (5-10 min)
+```javascript
+Agent({
+  description: "Write test suite",
+  subagent_type: "qa-tester",
+  prompt: "Create comprehensive test suite for dashboard feature. Read docs/handoffs/issue_42_tech_spec.md. Cover all acceptance criteria and ensure >80% coverage."
+})
+```
+
+The qa-tester will:
+1. Read tech spec and acceptance criteria
+2. Read implementation code
+3. Create unit tests for components and services
+4. Create integration tests for user flows
+5. Run coverage analysis
+6. Verify all acceptance criteria are tested
+
+**Output:**
+- `src/app/features/dashboard/**/*.spec.ts` (test files)
+- Coverage report (>80% target)
+- Updated tech spec with test summary
+
+### Phase 5: Review (Manual)
+You review the code and tests, test in browser, then commit or request changes.
 
 ## Common Patterns
 
