@@ -12,7 +12,8 @@
       "Bash(npm audit *)",
       "Bash(mkdir -p KanbAI-Web/src/environments)",
       "Bash(mkdir -p KanbAI-Web/src/app/core/models)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)"
     ]
   }
 }
