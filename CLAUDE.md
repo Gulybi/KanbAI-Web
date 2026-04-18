@@ -11,6 +11,7 @@ This is an Angular frontend application following a structured workflow with cle
 - `docs/handoffs/` - Handoff documents between workflow phases
   - `issue_{N}_context.md` - Business requirements (Product Manager phase)
   - `issue_{N}_tech_spec.md` - Technical specifications (Staff Engineer phase)
+  - `issue_{N}_design_spec.md` - Design specifications (Web Designer phase)
   - `backend_api_map.md` - Backend API contracts
 - `src/app/` - Angular application source
   - `core/` or `shared/` - Core services, interceptors, shared components
@@ -20,7 +21,7 @@ This is an Angular frontend application following a structured workflow with cle
 
 ## Development Workflow
 
-The project follows a three-phase workflow:
+The project follows a four-phase workflow:
 
 ### Phase 1: Product Management (Business Context)
 **Goal:** Define WHAT and WHY, not HOW.
@@ -38,12 +39,20 @@ When translating business requirements to technical specs:
 2. Output: `docs/handoffs/issue_{N}_tech_spec.md`
 3. Must include: Component Architecture, State Management, Service Integration, Implementation Steps
 
-### Phase 3: Implementation (Code)
-**Goal:** Write clean, secure, optimized TypeScript/Angular code.
+### Phase 3: UI/UX Design (Visual Specification)
+**Goal:** Define unified design system, component styling, and accessibility standards.
+
+When creating visual specifications:
+1. Use the `web-designer` agent to create design specifications
+2. Output: `docs/handoffs/issue_{N}_design_spec.md`
+3. Must include: Design System (colors, typography, spacing), Component Styling (exact SCSS), Responsive Design, Accessibility Compliance
+
+### Phase 4: Implementation (Code)
+**Goal:** Write clean, secure, optimized TypeScript/Angular code with proper styling.
 
 When implementing features:
 1. Use the `developer` agent to implement code
-2. Follow the tech spec exactly - don't invent features
+2. Follow the tech spec AND design spec exactly - don't invent features
 3. Run build verification before considering work complete
 4. Update tech spec with "Development Status" section
 
@@ -187,6 +196,12 @@ Scouts backend API contracts (Controllers, DTOs, Swagger).
 **When to use:** Need to understand backend expectations for frontend services
 **Output:** `docs/handoffs/backend_api_map.md` with TypeScript-compatible interfaces
 
+### web-designer
+Creates unified design system specifications and component styling.
+
+**When to use:** After staff-engineer creates tech spec, before developer implements
+**Output:** `docs/handoffs/issue_{N}_design_spec.md` with design tokens, SCSS code, accessibility guidelines
+
 ## Agent Invocation Examples
 
 ```typescript
@@ -204,11 +219,18 @@ Agent({
   prompt: "Read the context document at docs/handoffs/issue_42_context.md and design the technical specification. Focus on component hierarchy and state management for real-time notifications."
 })
 
+// Web Designer Phase
+Agent({
+  description: "Create design specification",
+  subagent_type: "web-designer",
+  prompt: "Read the tech spec at docs/handoffs/issue_42_tech_spec.md and create a complete design specification. Define color palette, typography, spacing, and provide exact SCSS code for all components. Ensure WCAG AA compliance."
+})
+
 // Developer Phase
 Agent({
   description: "Implement feature",
   subagent_type: "developer",
-  prompt: "Implement the feature described in docs/handoffs/issue_42_tech_spec.md. Follow the implementation steps exactly as specified."
+  prompt: "Implement the feature described in docs/handoffs/issue_42_tech_spec.md using the styling from docs/handoffs/issue_42_design_spec.md. Follow both specifications exactly."
 })
 
 // Codebase Scanner
@@ -238,10 +260,19 @@ Agent({
 - ✅ Design component hierarchy, state management, data contracts
 - ✅ Provide exact TypeScript interfaces
 
+### Web Designer Agent
+- ❌ DO NOT write component logic or business logic
+- ❌ DO NOT design technical architecture
+- ✅ Define design system (colors, typography, spacing)
+- ✅ Provide exact SCSS code for all components
+- ✅ Ensure WCAG AA accessibility compliance
+- ✅ Define responsive breakpoints and mobile-first design
+
 ### Developer Agent
 - ❌ DO NOT invent features beyond the tech spec
+- ❌ DO NOT invent styles beyond the design spec
 - ❌ DO NOT guess when spec is ambiguous
-- ✅ Implement exactly what's specified
+- ✅ Implement exactly what's specified in both tech and design specs
 - ✅ Fix introduced test failures before completion
 - ✅ Ask for clarification if spec is unclear
 
@@ -277,7 +308,8 @@ Agent({
 |----------|-------|-----|
 | New GitHub issue assigned | product-manager | Need business context |
 | Context doc exists, need architecture | staff-engineer | Need technical design |
-| Tech spec exists, ready to code | developer | Ready for implementation |
+| Tech spec exists, need visual design | web-designer | Need styling specification |
+| Design spec exists, ready to code | developer | Ready for implementation |
 | Don't understand current structure | codebase-scanner | Need architecture map |
 | Code written, need to verify | build-verifier | Ensure build passes |
 | Need backend contract details | backend-api-bridge | Ensure API compatibility |
@@ -288,7 +320,10 @@ Agent({
 End with: *"The business context is defined and saved. You can now instruct the staff-engineer agent to read the context note and design the frontend technical specification."*
 
 ### For Staff Engineer
-End with: *"The technical specification is saved. You can now instruct the developer agent to read the tech spec and begin implementation."*
+End with: *"The technical specification is saved. You can now instruct the web-designer agent to create the design specification."*
+
+### For Web Designer
+End with: *"The design specification is saved. You can now instruct the developer agent to implement the feature using both the technical spec and design spec."*
 
 ### For Developer
 End with: *"Development is complete and files are saved. You can now instruct QA to review the implementation and write automated tests."*
