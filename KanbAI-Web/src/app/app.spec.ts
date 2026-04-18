@@ -17,56 +17,46 @@ describe('App', () => {
     });
   });
 
-  describe('Tailwind CSS Integration', () => {
-    it('should render title with Tailwind utility classes', async () => {
+  describe('Shell Layout', () => {
+    it('should render navbar with application title', async () => {
       const fixture = TestBed.createComponent(App);
       await fixture.whenStable();
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('h1')?.textContent).toContain('Tailwind CSS is Working!');
+      expect(compiled.querySelector('app-navbar h1')?.textContent).toContain('KanbAI');
     });
 
-    it('should apply Tailwind flex layout classes to container', () => {
+    it('should apply shell layout flex structure', () => {
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
 
-      const container = fixture.debugElement.query(By.css('.flex'));
+      const container = fixture.debugElement.query(By.css('.flex.flex-col.h-screen'));
       expect(container).toBeTruthy();
-      expect(container.nativeElement.classList.contains('items-center')).toBe(true);
-      expect(container.nativeElement.classList.contains('justify-center')).toBe(true);
-      expect(container.nativeElement.classList.contains('min-h-screen')).toBe(true);
-      expect(container.nativeElement.classList.contains('bg-gray-100')).toBe(true);
     });
 
-    it('should apply Tailwind card styling classes', () => {
+    it('should render navbar component', () => {
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
 
-      const card = fixture.debugElement.query(By.css('.bg-white'));
-      expect(card).toBeTruthy();
-      expect(card.nativeElement.classList.contains('p-8')).toBe(true);
-      expect(card.nativeElement.classList.contains('rounded-lg')).toBe(true);
-      expect(card.nativeElement.classList.contains('shadow-md')).toBe(true);
+      const navbar = fixture.debugElement.query(By.css('app-navbar'));
+      expect(navbar).toBeTruthy();
     });
 
-    it('should apply Tailwind typography classes to heading', () => {
+    it('should render sidebar component', () => {
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
 
-      const heading = fixture.debugElement.query(By.css('h1'));
-      expect(heading).toBeTruthy();
-      expect(heading.nativeElement.classList.contains('text-2xl')).toBe(true);
-      expect(heading.nativeElement.classList.contains('font-bold')).toBe(true);
-      expect(heading.nativeElement.classList.contains('text-blue-600')).toBe(true);
+      const sidebar = fixture.debugElement.query(By.css('app-sidebar'));
+      expect(sidebar).toBeTruthy();
     });
 
-    it('should apply Tailwind spacing and color classes to paragraph', () => {
+    it('should apply main content area styling', () => {
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
 
-      const paragraph = fixture.debugElement.query(By.css('p'));
-      expect(paragraph).toBeTruthy();
-      expect(paragraph.nativeElement.classList.contains('mt-4')).toBe(true);
-      expect(paragraph.nativeElement.classList.contains('text-gray-700')).toBe(true);
+      const mainContent = fixture.debugElement.query(By.css('main'));
+      expect(mainContent).toBeTruthy();
+      expect(mainContent.nativeElement.classList.contains('flex-1')).toBe(true);
+      expect(mainContent.nativeElement.classList.contains('overflow-y-auto')).toBe(true);
     });
 
     it('should include router-outlet for navigation', () => {
