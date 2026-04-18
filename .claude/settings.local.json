@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue *)",
+      "Bash(npm install *)",
+      "Bash(npx tailwindcss *)",
+      "Bash(npm run *)",
+      "Bash(npm uninstall *)",
+      "Bash(timeout 10 npm start)",
+      "Bash(npm test *)"
+    ]
+  }
+}
