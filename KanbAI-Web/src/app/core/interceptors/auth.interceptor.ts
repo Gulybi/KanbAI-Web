@@ -1,4 +1,5 @@
 import { HttpInterceptorFn } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
 
 /**
  * Authentication Interceptor
@@ -11,16 +12,18 @@ import { HttpInterceptorFn } from '@angular/common/http';
  * Current behavior: Pass-through (no modifications)
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  // TODO: Attach JWT token from storage (localStorage/sessionStorage/signal)
-  // Example future implementation:
-  // const token = localStorage.getItem('auth_token');
-  // if (token) {
-  //   req = req.clone({
-  //     setHeaders: {
-  //       Authorization: `Bearer ${token}`
-  //     }
-  //   });
-  // }
+  // Only intercept requests to our API (not external APIs)
+  if (req.url.startsWith(environment.apiUrl)) {
+    // TODO: Attach JWT token from storage
+    // const token = localStorage.getItem('auth_token');
+    // if (token) {
+    //   req = req.clone({
+    //     setHeaders: {
+    //       Authorization: `Bearer ${token}`
+    //     }
+    //   });
+    // }
+  }
 
   // Pass the request through to the next handler
   return next(req);
