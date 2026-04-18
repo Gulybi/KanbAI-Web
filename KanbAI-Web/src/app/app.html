@@ -1,8 +1,15 @@
-<div class="flex items-center justify-center min-h-screen bg-gray-100">
-  <div class="p-8 bg-white rounded-lg shadow-md">
-    <h1 class="text-2xl font-bold text-blue-600">Tailwind CSS is Working!</h1>
-    <p class="mt-4 text-gray-700">Utility classes are being applied correctly.</p>
+<div class="flex flex-col h-screen">
+  <!-- Navbar (full width at top) -->
+  <app-navbar />
+
+  <!-- Main content area: Sidebar + Router Outlet -->
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Sidebar (fixed width on left) -->
+    <app-sidebar />
+
+    <!-- Content area (takes remaining width) -->
+    <main class="flex-1 overflow-y-auto bg-gray-50">
+      <router-outlet />
+    </main>
   </div>
 </div>
-
-<router-outlet />
