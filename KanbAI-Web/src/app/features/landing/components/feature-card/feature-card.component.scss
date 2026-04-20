@@ -1,0 +1,26 @@
+// Custom hover effect for card elevation
+.feature-card {
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  }
+}
+
+// Icon gradient backgrounds
+.icon-board {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.icon-ai {
+  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
+}
+
+.icon-team {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.icon-automation {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}

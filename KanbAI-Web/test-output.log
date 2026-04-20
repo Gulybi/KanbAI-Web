@@ -1,0 +1,115 @@
+
+> kanb-ai-web@0.0.0 test
+> ng test
+
+Node.js version v25.9.0 detected.
+Odd numbered Node.js versions will not enter LTS status and should not be used for production. For more information, please see https://nodejs.org/en/about/previous-releases/.
+[33m❯[39m Building...
+[32m✔[39m Building...
+Application bundle generation failed. [7.690 seconds] - 2026-04-20T14:41:38.104Z
+
+[1m[31m[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2503: Cannot find namespace 'jasmine'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/core/guards/auth.guard.spec.ts:8:18:
+[37m      8 │   let mockRouter: [32mjasmine[37m.SpyObj<Router>;
+        ╵                   [32m~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'jasmine'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/core/guards/auth.guard.spec.ts:12:17:
+[37m      12 │     mockRouter = [32mjasmine[37m.createSpyObj('Router', ['parseUrl']);
+         ╵                  [32m~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2503: Cannot find namespace 'jasmine'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/core/guards/unauth.guard.spec.ts:8:18:
+[37m      8 │   let mockRouter: [32mjasmine[37m.SpyObj<Router>;
+        ╵                   [32m~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'jasmine'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/core/guards/unauth.guard.spec.ts:12:17:
+[37m      12 │     mockRouter = [32mjasmine[37m.createSpyObj('Router', ['parseUrl']);
+         ╵                  [32m~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/components/hero-section/hero-section.component.spec.ts:88:6:
+[37m      88 │       [32mspyOn[37m(component.signUpClick, 'emit');
+         ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/components/hero-section/hero-section.component.spec.ts:102:6:
+[37m      102 │       [32mspyOn[37m(component.loginClick, 'emit');
+          ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/components/hero-section/hero-section.component.spec.ts:116:6:
+[37m      116 │       [32mspyOn[37m(component.signUpClick, 'emit');
+          ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/components/hero-section/hero-section.component.spec.ts:117:6:
+[37m      117 │       [32mspyOn[37m(component.loginClick, 'emit');
+          ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/components/hero-section/hero-section.component.spec.ts:225:6:
+[37m      225 │       [32mspyOn[37m(component.loginClick, 'emit');
+          ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/components/hero-section/hero-section.component.spec.ts:238:6:
+[37m      238 │       [32mspyOn[37m(component.loginClick, 'emit');
+          ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/components/hero-section/hero-section.component.spec.ts:239:6:
+[37m      239 │       [32mspyOn[37m(component.signUpClick, 'emit');
+          ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2503: Cannot find namespace 'jasmine'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/landing-page/landing-page.component.spec.ts:9:18:
+[37m      9 │   let mockRouter: [32mjasmine[37m.SpyObj<Router>;
+        ╵                   [32m~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'jasmine'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/landing-page/landing-page.component.spec.ts:12:17:
+[37m      12 │     mockRouter = [32mjasmine[37m.createSpyObj('Router', ['navigate']);
+         ╵                  [32m~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/landing-page/landing-page.component.spec.ts:106:6:
+[37m      106 │       [32mspyOn[37m(component, 'onLoginClick');
+          ╵       [32m~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2304: Cannot find name 'spyOn'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/landing/landing-page/landing-page.component.spec.ts:127:6:
+[37m      127 │       [32mspyOn[37m(component, 'onSignUpClick');
+          ╵       [32m~~~~~[0m
+
+[39m[22m

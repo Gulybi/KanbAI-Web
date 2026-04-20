@@ -1,0 +1,14 @@
+<div class="min-h-screen bg-gray-50">
+  <!-- Hero Section -->
+  <app-hero-section
+    (loginClick)="onLoginClick()"
+    (signUpClick)="onSignUpClick()"
+    class="block">
+  </app-hero-section>
+
+  <!-- Features Section -->
+  <app-features-section
+    [features]="features()"
+    class="block py-16 md:py-24">
+  </app-features-section>
+</div>
