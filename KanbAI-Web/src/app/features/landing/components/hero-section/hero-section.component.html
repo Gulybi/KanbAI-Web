@@ -1,0 +1,45 @@
+<section class="hero-gradient">
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 lg:py-32">
+    <div class="max-w-4xl mx-auto text-center">
+      <!-- Brand -->
+      <h1 class="hero-title text-5xl sm:text-6xl md:text-7xl font-bold mb-6 leading-tight">
+        KanbAI
+      </h1>
+
+      <!-- Headline -->
+      <h2 class="text-3xl sm:text-4xl md:text-5xl font-semibold text-gray-900 mb-6 leading-tight">
+        AI-Powered Kanban Boards for Modern Teams
+      </h2>
+
+      <!-- Subheading -->
+      <p class="text-lg sm:text-xl md:text-2xl text-gray-600 mb-10 leading-relaxed max-w-3xl mx-auto">
+        Streamline your workflow with intelligent automation, real-time collaboration,
+        and data-driven insights that adapt to your team's needs.
+      </p>
+
+      <!-- CTA Buttons -->
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <!-- Primary CTA -->
+        <button
+          (click)="signUpClick.emit()"
+          class="btn-primary-animated w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-300"
+          aria-label="Get started with KanbAI">
+          Get Started Free
+        </button>
+
+        <!-- Secondary CTA -->
+        <button
+          (click)="loginClick.emit()"
+          class="w-full sm:w-auto px-8 py-4 bg-white hover:bg-gray-50 active:bg-gray-100 text-blue-600 font-semibold text-lg rounded-lg border-2 border-blue-600 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-300"
+          aria-label="Login to your account">
+          Login
+        </button>
+      </div>
+
+      <!-- Optional: Trust indicator -->
+      <p class="mt-8 text-sm text-gray-500">
+        ✨ No credit card required • 🔒 Secure by default • 🚀 Set up in minutes
+      </p>
+    </div>
+  </div>
+</section>

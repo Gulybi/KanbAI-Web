@@ -13,7 +13,13 @@
       "Bash(mkdir -p KanbAI-Web/src/environments)",
       "Bash(mkdir -p KanbAI-Web/src/app/core/models)",
       "Bash(npx tsc *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "mcp__plugin_pr-compliance_github__get_issue",
+      "Bash(tee test-output.log)"
+    ],
+    "additionalDirectories": [
+      "C:\\temp\\KanbAI-Web\\docs\\handoffs",
+      "c:\\temp\\KanbAI-Web\\KanbAI-Web\\src\\app\\core"
     ]
   }
 }
