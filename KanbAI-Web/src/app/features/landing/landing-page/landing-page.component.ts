@@ -48,7 +48,6 @@ export class LandingPageComponent {
   }
 
   onSignUpClick(): void {
-    // Route doesn't exist yet, navigate to login with query param or show message
-    this.router.navigate(['/login'], { queryParams: { mode: 'register' } });
+    this.router.navigate(['/register'], { queryParams: { mode: 'register' } });
   }
 }
