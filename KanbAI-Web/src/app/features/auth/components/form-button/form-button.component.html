@@ -1,0 +1,7 @@
+﻿<button
+  [type]="type"
+  [disabled]="disabled"
+  [ngClass]="{ 'w-full': fullWidth }"
+  class="bg-brand-primary text-text-inverse rounded-pill px-4 py-2 text-sm font-medium transition-colors hover:bg-brand-primaryHover disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center">
+  <ng-content />
+</button>

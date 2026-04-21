@@ -1,6 +1,43 @@
-<div class="flex items-center justify-center min-h-screen bg-gray-100">
-  <div class="p-8 bg-white rounded-lg shadow-md">
-    <h1 class="text-2xl font-bold text-gray-800">Login Page</h1>
-    <p class="mt-4 text-gray-600">Authentication UI will be implemented here.</p>
+<div class="flex items-center justify-center min-h-screen bg-background-sidebarLight font-sans">
+  <div class="w-full max-w-[400px] px-4">
+
+    <div class="text-center mb-8">
+      <h1 class="text-xxl font-bold text-text-primary tracking-tight">Welcome Back</h1>
+      <p class="text-sm text-text-secondary mt-2">Enter your credentials to access your board</p>
+    </div>
+
+    <app-form-card>
+      <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="flex flex-col gap-6">
+
+        <app-form-input
+          label="Email Address"
+          type="email"
+          placeholder="e.g. alex@company.com"
+          [control]="emailControl">
+        </app-form-input>
+
+        <app-form-input
+          label="Password"
+          type="password"
+          placeholder="••••••••"
+          [control]="passwordControl">
+        </app-form-input>
+
+        <div class="mt-2">
+          <app-form-button
+            type="submit"
+            [fullWidth]="true"
+            [disabled]="loginForm.invalid || isLoading">
+            {{ isLoading ? 'Signing in...' : 'Sign In' }}
+          </app-form-button>
+        </div>
+
+      </form>
+    </app-form-card>
+
+    <p class="text-center mt-6 text-sm text-text-tertiary">
+      Don't have an account?
+      <a href="#" class="text-brand-primary font-medium hover:underline">Request access</a>
+    </p>
   </div>
 </div>
