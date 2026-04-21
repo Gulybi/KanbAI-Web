@@ -1,0 +1,63 @@
+﻿<div class="flex items-center justify-center min-h-screen bg-background-sidebarLight font-sans">
+  <div class="w-full max-w-[400px] px-4">
+
+    <div class="text-center mb-8">
+      <h1 class="text-xxl font-bold text-text-primary tracking-tight">Create Account</h1>
+      <p class="text-sm text-text-secondary mt-2">Join our Kanban board and start managing tasks</p>
+    </div>
+
+    <app-form-card>
+      <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="flex flex-col gap-5">
+
+        <app-form-input
+          label="Full Name"
+          type="text"
+          placeholder="e.g. Alex Doe"
+          [control]="nameControl">
+        </app-form-input>
+
+        <app-form-input
+          label="Email Address"
+          type="email"
+          placeholder="e.g. alex@company.com"
+          [control]="emailControl">
+        </app-form-input>
+
+        <app-form-input
+          label="Password"
+          type="password"
+          placeholder="Min. 8 characters"
+          [control]="passwordControl">
+        </app-form-input>
+
+        <app-form-input
+          label="Confirm Password"
+          type="password"
+          placeholder="Repeat your password"
+          [control]="confirmPasswordControl">
+        </app-form-input>
+
+        @if (registerForm.errors?.['passwordMismatch'] && confirmPasswordControl.touched) {
+          <span class="text-xs text-status-high -mt-3">
+            Passwords do not match.
+          </span>
+        }
+
+        <div class="mt-2">
+          <app-form-button
+            type="submit"
+            [fullWidth]="true"
+            [disabled]="registerForm.invalid || isLoading">
+            {{ isLoading ? 'Creating Account...' : 'Register' }}
+          </app-form-button>
+        </div>
+
+      </form>
+    </app-form-card>
+
+    <p class="text-center mt-6 text-sm text-text-tertiary">
+      Already have an account?
+      <a routerLink="/login" class="text-brand-primary font-medium hover:underline">Sign In</a>
+    </p>
+  </div>
+</div>

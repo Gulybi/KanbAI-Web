@@ -2,7 +2,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 import { AuthResponseDto, UserProfileDto, LoginRequestDto, RegisterRequestDto } from '../models/auth.models';
-import { data } from 'autoprefixer';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -17,7 +16,7 @@ export class AuthService {
   }
 
   register(user: RegisterRequestDto): Observable<AuthResponseDto> {
-    return this.http.post<AuthResponseDto>(`${this.apiUrl}/register`, data).pipe(tap(response => this.handleAuthSuccess(response)));
+    return this.http.post<AuthResponseDto>(`${this.apiUrl}/register`, user).pipe(tap(response => this.handleAuthSuccess(response)));
   }
 
   logout(): void {

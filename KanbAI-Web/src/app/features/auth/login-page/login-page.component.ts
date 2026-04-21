@@ -7,7 +7,7 @@ import {
   Validators,
   FormControl,
 } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/services/AuthService';
 import { FormCardComponent } from '../components/form-card/form-card.component';
 import { FormInputComponent } from '../components/form-input/form-input.component';
@@ -22,6 +22,7 @@ import { FormButtonComponent } from '../components/form-button/form-button.compo
     FormCardComponent,
     FormInputComponent,
     FormButtonComponent,
+    RouterLink,
   ],
   templateUrl: './login-page.component.html',
   styleUrl: './login-page.component.scss',
@@ -56,7 +57,7 @@ export class LoginPageComponent {
       this.authService.login(credentials).subscribe({
         next: (response) => {
           localStorage.setItem('access_token', response.token);
-          this.router.navigate(['/dashboard']);
+          this.router.navigate(['/']);
         },
         error: (err) => {
           console.error('Login failed', err);
