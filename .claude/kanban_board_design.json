@@ -1,0 +1,139 @@
+{
+  "name": "Project Management Dashboard Design System",
+  "version": "1.0",
+  "tokens": {
+    "colors": {
+      "brand": {
+        "primary": "#8C9B7B",
+        "primaryHover": "#7A8A69",
+        "primaryLight": "#E8EBE4"
+      },
+      "background": {
+        "main": "#FFFFFF",
+        "sidebarDark": "#0B0B0B",
+        "sidebarLight": "#F4F5F1",
+        "card": "#FFFFFF",
+        "cardDragging": "#FFFFFF",
+        "dropzone": "#F4F5F1",
+        "searchBar": "#F4F5F1"
+      },
+      "text": {
+        "primary": "#1C1C1C",
+        "secondary": "#7A7A7A",
+        "tertiary": "#A1A1A1",
+        "inverse": "#FFFFFF",
+        "brand": "#8C9B7B"
+      },
+      "status": {
+        "high": "#E56B6F",
+        "medium": "#4A6FA5",
+        "average": "#E8B042",
+        "done": "#9CC5A1"
+      },
+      "border": {
+        "light": "#EAEAEA",
+        "dropzone": "#8C9B7B"
+      }
+    },
+    "typography": {
+      "fontFamily": {
+        "base": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+      },
+      "fontSize": {
+        "xs": "10px",
+        "sm": "12px",
+        "md": "14px",
+        "lg": "16px",
+        "xl": "20px",
+        "xxl": "24px"
+      },
+      "fontWeight": {
+        "regular": 400,
+        "medium": 500,
+        "semibold": 600,
+        "bold": 700
+      },
+      "lineHeight": {
+        "tight": 1.2,
+        "normal": 1.5,
+        "relaxed": 1.75
+      }
+    },
+    "spacing": {
+      "xxs": "4px",
+      "xs": "8px",
+      "sm": "12px",
+      "md": "16px",
+      "lg": "24px",
+      "xl": "32px",
+      "xxl": "48px"
+    },
+    "borderRadius": {
+      "sm": "6px",
+      "md": "12px",
+      "lg": "16px",
+      "xl": "20px",
+      "pill": "9999px",
+      "circle": "50%"
+    },
+    "shadows": {
+      "card": "0 2px 8px rgba(0, 0, 0, 0.04)",
+      "cardHover": "0 4px 12px rgba(0, 0, 0, 0.08)",
+      "cardDragging": "0 12px 24px rgba(0, 0, 0, 0.12)",
+      "dropdown": "0 8px 16px rgba(0, 0, 0, 0.1)"
+    }
+  },
+  "components": {
+    "layout": {
+      "sidebarDarkWidth": "72px",
+      "sidebarLightWidth": "240px",
+      "topbarHeight": "80px",
+      "mainContentPadding": "32px",
+      "kanbanColumnGap": "24px",
+      "kanbanColumnWidth": "300px"
+    },
+    "card": {
+      "padding": "20px",
+      "borderRadius": "{borderRadius.lg}",
+      "backgroundColor": "{colors.background.card}",
+      "boxShadow": "{shadows.card}",
+      "gap": "16px"
+    },
+    "button": {
+      "pill": {
+        "padding": "8px 16px",
+        "borderRadius": "{borderRadius.pill}",
+        "fontSize": "{typography.fontSize.sm}",
+        "fontWeight": "{typography.fontWeight.medium}"
+      },
+      "primary": {
+        "backgroundColor": "{colors.brand.primary}",
+        "color": "{colors.text.inverse}"
+      },
+      "secondary": {
+        "backgroundColor": "{colors.brand.primaryLight}",
+        "color": "{colors.text.primary}"
+      }
+    },
+    "badge": {
+      "padding": "2px 8px",
+      "borderRadius": "{borderRadius.pill}",
+      "fontSize": "{typography.fontSize.xs}"
+    },
+    "progressBar": {
+      "height": "4px",
+      "borderRadius": "{borderRadius.pill}",
+      "trackColor": "{colors.border.light}"
+    },
+    "avatar": {
+      "size": "24px",
+      "border": "2px solid {colors.background.main}"
+    },
+    "storageWidget": {
+      "backgroundColor": "{colors.brand.primary}",
+      "color": "{colors.text.inverse}",
+      "padding": "20px",
+      "borderRadius": "{borderRadius.lg}"
+    }
+  }
+}
