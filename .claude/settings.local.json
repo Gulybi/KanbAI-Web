@@ -20,7 +20,8 @@
     ],
     "additionalDirectories": [
       "C:\\temp\\KanbAI-Web\\docs\\handoffs",
-      "c:\\temp\\KanbAI-Web\\KanbAI-Web\\src\\app\\core"
+      "c:\\temp\\KanbAI-Web\\KanbAI-Web\\src\\app\\core",
+      "c:\\temp\\KanbAI-Web\\KanbAI-Web\\src\\app\\features\\projects"
     ]
   }
 }
