@@ -1,18 +1,23 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { HttpErrorResponse } from '@angular/common/http';
-import { Subject, of, throwError } from 'rxjs';
+import { WritableSignal, signal } from '@angular/core';
 import { vi } from 'vitest';
 
 import { DashboardPageComponent } from './dashboard-page.component';
-import { ProjectsApiService } from '../services/projects-api.service';
+import { ProjectStateService } from '../state/project-state.service';
 import { ProjectSummary } from '../models/project.model';
 import { DashboardSkeletonComponent } from '../components/dashboard-skeleton/dashboard-skeleton.component';
 import { ProjectGridComponent } from '../components/project-grid/project-grid.component';
 import { DashboardEmptyStateComponent } from '../components/dashboard-empty-state/dashboard-empty-state.component';
 import { DashboardErrorStateComponent } from '../components/dashboard-error-state/dashboard-error-state.component';
 
-type ListProjectsReturn = ReturnType<ProjectsApiService['listProjects']>;
+interface ProjectStateMock {
+  projects: WritableSignal<ProjectSummary[]>;
+  isLoading: WritableSignal<boolean>;
+  error: WritableSignal<string | null>;
+  hasLoaded: WritableSignal<boolean>;
+  loadProjects: ReturnType<typeof vi.fn>;
+}
 
 function makeProjects(count: number): ProjectSummary[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -25,36 +30,40 @@ function makeProjects(count: number): ProjectSummary[] {
   }));
 }
 
-async function mount(listProjects: () => ListProjectsReturn): Promise<ComponentFixture<DashboardPageComponent>> {
-  const stub = { listProjects: vi.fn(listProjects) };
+async function mount(): Promise<{
+  fixture: ComponentFixture<DashboardPageComponent>;
+  mock: ProjectStateMock;
+}> {
+  const mock: ProjectStateMock = {
+    projects: signal<ProjectSummary[]>([]),
+    isLoading: signal(false),
+    error: signal<string | null>(null),
+    hasLoaded: signal(false),
+    loadProjects: vi.fn()
+  };
 
   await TestBed.configureTestingModule({
     imports: [DashboardPageComponent],
-    providers: [{ provide: ProjectsApiService, useValue: stub }]
+    providers: [{ provide: ProjectStateService, useValue: mock }]
   }).compileComponents();
 
   const fixture = TestBed.createComponent(DashboardPageComponent);
   fixture.detectChanges();
-  return fixture;
+  return { fixture, mock };
 }
 
 describe('DashboardPageComponent', () => {
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    // The container logs a dev-diagnostic via console.error on the error
-    // branch; we don't want that polluting the test output.
-    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  it('calls loadProjects() on init', async () => {
+    const { mock } = await mount();
+    expect(mock.loadProjects).toHaveBeenCalledTimes(1);
   });
 
-  afterEach(() => {
-    errorSpy.mockRestore();
-  });
+  it('renders the skeleton while the first load is in flight', async () => {
+    const { fixture, mock } = await mount();
 
-  it('renders the skeleton while the subscription is pending', async () => {
-    // Never-emitting subject — the VM stays in "loading" forever.
-    const pending = new Subject<ProjectSummary[]>();
-    const fixture = await mount(() => pending.asObservable());
+    mock.isLoading.set(true);
+    mock.hasLoaded.set(false);
+    fixture.detectChanges();
 
     const skeleton = fixture.debugElement.query(By.directive(DashboardSkeletonComponent));
     expect(skeleton).toBeTruthy();
@@ -63,17 +72,27 @@ describe('DashboardPageComponent', () => {
     expect(grid).toBeNull();
   });
 
-  it('renders the grid on a success response with >=1 project', async () => {
+  it('renders the grid when the state service exposes a non-empty list', async () => {
+    const { fixture, mock } = await mount();
+
     const projects = makeProjects(3);
-    const fixture = await mount(() => of(projects));
+    mock.projects.set(projects);
+    mock.hasLoaded.set(true);
+    mock.isLoading.set(false);
+    fixture.detectChanges();
 
     const grid = fixture.debugElement.query(By.directive(ProjectGridComponent));
     expect(grid).toBeTruthy();
     expect((grid.componentInstance as ProjectGridComponent).projects).toEqual(projects);
   });
 
-  it('renders the empty state on a success response with 0 projects', async () => {
-    const fixture = await mount(() => of([]));
+  it('renders the empty state when hasLoaded is true and projects is empty', async () => {
+    const { fixture, mock } = await mount();
+
+    mock.projects.set([]);
+    mock.hasLoaded.set(true);
+    mock.isLoading.set(false);
+    fixture.detectChanges();
 
     const empty = fixture.debugElement.query(By.directive(DashboardEmptyStateComponent));
     expect(empty).toBeTruthy();
@@ -82,10 +101,11 @@ describe('DashboardPageComponent', () => {
     expect(grid).toBeNull();
   });
 
-  it('renders the error state with the mapped message on HTTP failure', async () => {
-    const fixture = await mount(() =>
-      throwError(() => new HttpErrorResponse({ status: 500, statusText: 'Server Error' }))
-    );
+  it('renders the error state with the message from the state service', async () => {
+    const { fixture, mock } = await mount();
+
+    mock.error.set('Something went wrong on our end. Please try again in a moment.');
+    fixture.detectChanges();
 
     const error = fixture.debugElement.query(By.directive(DashboardErrorStateComponent));
     expect(error).toBeTruthy();
@@ -93,41 +113,31 @@ describe('DashboardPageComponent', () => {
     expect(instance.message).toBe('Something went wrong on our end. Please try again in a moment.');
   });
 
-  it('renders the error state when the envelope reports success: false', async () => {
-    const fixture = await mount(() => throwError(() => new Error('bad envelope')));
+  it('re-invokes loadProjects() when the error panel emits retry', async () => {
+    const { fixture, mock } = await mount();
+    // loadProjects was called once in ngOnInit.
+    expect(mock.loadProjects).toHaveBeenCalledTimes(1);
 
-    const error = fixture.debugElement.query(By.directive(DashboardErrorStateComponent));
-    expect(error).toBeTruthy();
-    const instance = error.componentInstance as DashboardErrorStateComponent;
-    // Plain Error maps to the generic-load message.
-    expect(instance.message).toBe("We couldn't load your projects. Please try again.");
-  });
-
-  it('re-subscribes on retry and flips back to loading', async () => {
-    let call = 0;
-    const fixture = await mount(() => {
-      call += 1;
-      if (call === 1) {
-        return throwError(() => new HttpErrorResponse({ status: 500, statusText: 'x' }));
-      }
-      return new Subject<ProjectSummary[]>().asObservable();
-    });
+    mock.error.set("We couldn't load your projects. Please try again.");
+    fixture.detectChanges();
 
     const error = fixture.debugElement.query(By.directive(DashboardErrorStateComponent));
     expect(error).toBeTruthy();
 
-    // Trigger retry.
     (error.componentInstance as DashboardErrorStateComponent).retry.emit();
     fixture.detectChanges();
 
-    const skeleton = fixture.debugElement.query(By.directive(DashboardSkeletonComponent));
-    expect(skeleton).toBeTruthy();
+    expect(mock.loadProjects).toHaveBeenCalledTimes(2);
   });
 
-  it('does not throw when the empty-state CTA is clicked (no-op for #30)', async () => {
-    const fixture = await mount(() => of([]));
-    const empty = fixture.debugElement.query(By.directive(DashboardEmptyStateComponent));
+  it('does not throw when the empty-state CTA is clicked (no-op for #31)', async () => {
+    const { fixture, mock } = await mount();
 
+    mock.projects.set([]);
+    mock.hasLoaded.set(true);
+    fixture.detectChanges();
+
+    const empty = fixture.debugElement.query(By.directive(DashboardEmptyStateComponent));
     expect(() => {
       (empty.componentInstance as DashboardEmptyStateComponent).createClick.emit();
       fixture.detectChanges();
@@ -135,41 +145,46 @@ describe('DashboardPageComponent', () => {
   });
 
   it('always renders the dashboard header regardless of VM state', async () => {
-    const pending = new Subject<ProjectSummary[]>();
-    const fixture = await mount(() => pending.asObservable());
+    const { fixture } = await mount();
 
     const header = fixture.nativeElement.querySelector('app-dashboard-header');
     expect(header).toBeTruthy();
   });
 
-  // QA gap-filler (issue #30): edge case explicitly enumerated in the
-  // tech-spec "Edge Cases to Test" — Component destroyed mid-fetch should
-  // NOT flip the VM after destruction, thanks to takeUntilDestroyed.
-  it('does not update the VM after fixture.destroy() while a subscription is in flight', async () => {
-    // Arrange: a subject we control so the fetch is still pending.
-    const pending = new Subject<ProjectSummary[]>();
-    const fixture = await mount(() => pending.asObservable());
+  it('prefers the error branch when both error and cached projects are present', async () => {
+    // This matches the tech-spec rule: the cache is preserved on list-load
+    // failure, but the page flips to the error panel so the user knows the
+    // last refresh did not complete.
+    const { fixture, mock } = await mount();
 
-    // Sanity: VM is loading while pending.
-    const instance = fixture.componentInstance as unknown as { vm: () => { status: string } };
-    expect(instance.vm().status).toBe('loading');
+    mock.projects.set(makeProjects(2));
+    mock.hasLoaded.set(true);
+    mock.error.set("We couldn't load your projects. Please try again.");
+    fixture.detectChanges();
 
-    // Act: destroy the component, then attempt to emit.
-    fixture.destroy();
-    pending.next([
-      {
-        id: 'late-1',
-        name: 'Late project',
-        description: null,
-        role: 'Owner',
-        createdAt: '2026-04-10T00:00:00Z',
-        updatedAt: '2026-04-10T00:00:00Z'
-      }
-    ]);
-    pending.complete();
+    const error = fixture.debugElement.query(By.directive(DashboardErrorStateComponent));
+    expect(error).toBeTruthy();
 
-    // Assert: VM was NOT transitioned to success after destruction.
-    // (takeUntilDestroyed unsubscribed before the emission arrived.)
-    expect(instance.vm().status).toBe('loading');
+    const grid = fixture.debugElement.query(By.directive(ProjectGridComponent));
+    expect(grid).toBeNull();
+  });
+
+  it('re-renders reactively when the state service signals change after initial mount', async () => {
+    const { fixture, mock } = await mount();
+
+    // Start in loading -> skeleton present.
+    mock.isLoading.set(true);
+    mock.hasLoaded.set(false);
+    fixture.detectChanges();
+    expect(fixture.debugElement.query(By.directive(DashboardSkeletonComponent))).toBeTruthy();
+
+    // Flip to success -> grid replaces the skeleton.
+    mock.isLoading.set(false);
+    mock.projects.set(makeProjects(1));
+    mock.hasLoaded.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.directive(DashboardSkeletonComponent))).toBeNull();
+    expect(fixture.debugElement.query(By.directive(ProjectGridComponent))).toBeTruthy();
   });
 });
