@@ -1,3 +1,17 @@
-<nav class="w-full h-16 bg-blue-600 text-white flex items-center px-6 shadow-md">
-  <h1 class="text-2xl font-bold">KanbAI</h1>
+<nav class="navbar">
+  <h1 class="navbar__brand">KanbAI</h1>
+
+  @if (currentUser(); as user) {
+    <div class="navbar__auth-cluster" role="group" aria-label="Account">
+      <span class="navbar__user-name" data-testid="navbar-user-name">
+        {{ user.name }}
+      </span>
+      <button
+        type="button"
+        class="navbar__logout-btn"
+        (click)="onLogout()">
+        Logout
+      </button>
+    </div>
+  }
 </nav>
