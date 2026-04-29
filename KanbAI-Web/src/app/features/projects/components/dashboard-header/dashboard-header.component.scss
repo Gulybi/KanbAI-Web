@@ -1,6 +1,8 @@
 @use 'src/styles/variables/colors' as *;
 @use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
 @use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
 @use 'src/styles/variables/breakpoints' as *;
 
 :host {
@@ -10,9 +12,23 @@
 .dashboard-header {
   display: flex;
   flex-direction: column;
-  gap: $space-xs;
+  gap: $space-md;
   padding-bottom: $space-md;
   border-bottom: 1px solid $border-light;
+
+  @include respond-to('md') {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: $space-lg;
+  }
+}
+
+.dashboard-header__text {
+  display: flex;
+  flex-direction: column;
+  gap: $space-xs;
+  min-width: 0;
 }
 
 .dashboard-header__title {
@@ -36,4 +52,62 @@
   line-height: $line-height-normal;
   color: $text-secondary;
   max-width: 60ch;
+}
+
+.dashboard-header__action {
+  flex-shrink: 0;
+  align-self: stretch;
+
+  @include respond-to('md') {
+    align-self: center;
+  }
+}
+
+.dashboard-header__new-project-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xxs;
+  background-color: $brand-primary;
+  color: $text-inverse;
+  border: none;
+  border-radius: $radius-md;
+  padding: $space-sm $space-md;
+  min-height: 44px;
+  min-width: 140px;
+  width: 100%;
+  font-family: $font-family-base;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color $motion-fast,
+    box-shadow $motion-fast,
+    transform $motion-fast;
+
+  @include respond-to('md') {
+    width: auto;
+  }
+
+  &:hover {
+    background-color: $brand-primary-hover;
+  }
+
+  &:active {
+    background-color: $brand-primary-hover;
+    transform: translateY(1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+}
+
+.dashboard-header__new-project-btn-icon {
+  width: 16px;
+  height: 16px;
+  color: currentColor;
 }

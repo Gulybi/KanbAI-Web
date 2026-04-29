@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Output } from '@angular/core';
 
 @Component({
   selector: 'app-dashboard-header',
@@ -8,4 +8,10 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
   styleUrl: './dashboard-header.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DashboardHeaderComponent {}
+export class DashboardHeaderComponent {
+  @Output() createClick = new EventEmitter<void>();
+
+  protected onCreateClick(): void {
+    this.createClick.emit();
+  }
+}

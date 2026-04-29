@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { WritableSignal, signal } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
 import { vi } from 'vitest';
 
 import { DashboardPageComponent } from './dashboard-page.component';
@@ -10,6 +11,8 @@ import { DashboardSkeletonComponent } from '../components/dashboard-skeleton/das
 import { ProjectGridComponent } from '../components/project-grid/project-grid.component';
 import { DashboardEmptyStateComponent } from '../components/dashboard-empty-state/dashboard-empty-state.component';
 import { DashboardErrorStateComponent } from '../components/dashboard-error-state/dashboard-error-state.component';
+import { DashboardHeaderComponent } from '../components/dashboard-header/dashboard-header.component';
+import { CreateProjectDialogComponent } from '../components/create-project-dialog/create-project-dialog.component';
 
 interface ProjectStateMock {
   projects: WritableSignal<ProjectSummary[]>;
@@ -17,6 +20,10 @@ interface ProjectStateMock {
   error: WritableSignal<string | null>;
   hasLoaded: WritableSignal<boolean>;
   loadProjects: ReturnType<typeof vi.fn>;
+}
+
+interface DialogMock {
+  open: ReturnType<typeof vi.fn>;
 }
 
 function makeProjects(count: number): ProjectSummary[] {
@@ -33,6 +40,7 @@ function makeProjects(count: number): ProjectSummary[] {
 async function mount(): Promise<{
   fixture: ComponentFixture<DashboardPageComponent>;
   mock: ProjectStateMock;
+  dialog: DialogMock;
 }> {
   const mock: ProjectStateMock = {
     projects: signal<ProjectSummary[]>([]),
@@ -42,14 +50,21 @@ async function mount(): Promise<{
     loadProjects: vi.fn()
   };
 
+  const dialog: DialogMock = {
+    open: vi.fn()
+  };
+
   await TestBed.configureTestingModule({
     imports: [DashboardPageComponent],
-    providers: [{ provide: ProjectStateService, useValue: mock }]
+    providers: [
+      { provide: ProjectStateService, useValue: mock },
+      { provide: Dialog, useValue: dialog }
+    ]
   }).compileComponents();
 
   const fixture = TestBed.createComponent(DashboardPageComponent);
   fixture.detectChanges();
-  return { fixture, mock };
+  return { fixture, mock, dialog };
 }
 
 describe('DashboardPageComponent', () => {
@@ -130,18 +145,41 @@ describe('DashboardPageComponent', () => {
     expect(mock.loadProjects).toHaveBeenCalledTimes(2);
   });
 
-  it('does not throw when the empty-state CTA is clicked (no-op for #31)', async () => {
-    const { fixture, mock } = await mount();
+  it('opens the create-project dialog when the empty-state CTA is clicked', async () => {
+    const { fixture, mock, dialog } = await mount();
 
     mock.projects.set([]);
     mock.hasLoaded.set(true);
     fixture.detectChanges();
 
     const empty = fixture.debugElement.query(By.directive(DashboardEmptyStateComponent));
-    expect(() => {
-      (empty.componentInstance as DashboardEmptyStateComponent).createClick.emit();
-      fixture.detectChanges();
-    }).not.toThrow();
+    (empty.componentInstance as DashboardEmptyStateComponent).createClick.emit();
+    fixture.detectChanges();
+
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    expect(dialog.open).toHaveBeenCalledWith(
+      CreateProjectDialogComponent,
+      expect.objectContaining({
+        ariaLabelledBy: 'create-project-heading',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+        panelClass: 'create-project-dialog-panel'
+      })
+    );
+  });
+
+  it('opens the same dialog when the header emits createClick', async () => {
+    const { fixture, dialog } = await mount();
+
+    const header = fixture.debugElement.query(By.directive(DashboardHeaderComponent));
+    (header.componentInstance as DashboardHeaderComponent).createClick.emit();
+    fixture.detectChanges();
+
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    expect(dialog.open).toHaveBeenCalledWith(
+      CreateProjectDialogComponent,
+      expect.objectContaining({ ariaLabelledBy: 'create-project-heading' })
+    );
   });
 
   it('always renders the dashboard header regardless of VM state', async () => {

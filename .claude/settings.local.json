@@ -16,7 +16,12 @@
       "Bash(npx vitest *)",
       "mcp__plugin_pr-compliance_github__get_issue",
       "Bash(tee test-output.log)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(git -C c:/temp/KanbAI-Web log --oneline -15)",
+      "Bash(xargs grep *)",
+      "Bash(npx ng *)",
+      "Bash(node -e \"const s = require\\('./coverage/KanbAI-Web/coverage-summary.json'\\); const keys = Object.keys\\(s\\).filter\\(k => k.includes\\('create-project-dialog'\\) || k.includes\\('whitespace.validator'\\) || k.includes\\('form-input'\\) || k.includes\\('dashboard-header'\\) || k.includes\\('dashboard-page.component'\\) || k === 'total'\\); keys.forEach\\(k => { const c = s[k]; console.log\\(k.replace\\(process.cwd\\(\\).replace\\(/\\\\\\\\\\\\\\\\/g,'/'\\), '.'\\) + '\\\\n  stmts=' + c.statements.pct + '% br=' + c.branches.pct + '% fn=' + c.functions.pct + '% ln=' + c.lines.pct + '%'\\); }\\);\")",
+      "Bash(node coverage-query.js)"
     ],
     "additionalDirectories": [
       "C:\\temp\\KanbAI-Web\\docs\\handoffs",

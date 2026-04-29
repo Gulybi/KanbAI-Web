@@ -1,5 +1,7 @@
 <main class="dashboard-page">
-  <app-dashboard-header></app-dashboard-header>
+  <app-dashboard-header
+    (createClick)="openCreateDialog()"
+  ></app-dashboard-header>
 
   <div class="dashboard-page__content">
     @switch (vm().status) {
@@ -11,7 +13,7 @@
       }
       @case ('empty') {
         <app-dashboard-empty-state
-          (createClick)="onCreatePlaceholder()"
+          (createClick)="openCreateDialog()"
         ></app-dashboard-empty-state>
       }
       @case ('error') {
