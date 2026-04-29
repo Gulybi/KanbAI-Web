@@ -1,9 +1,13 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
+
 import { DashboardHeaderComponent } from '../components/dashboard-header/dashboard-header.component';
 import { DashboardSkeletonComponent } from '../components/dashboard-skeleton/dashboard-skeleton.component';
 import { DashboardEmptyStateComponent } from '../components/dashboard-empty-state/dashboard-empty-state.component';
 import { DashboardErrorStateComponent } from '../components/dashboard-error-state/dashboard-error-state.component';
 import { ProjectGridComponent } from '../components/project-grid/project-grid.component';
+import { CreateProjectDialogComponent } from '../components/create-project-dialog/create-project-dialog.component';
+import { CreateProjectDialogResult } from '../components/create-project-dialog/create-project-dialog.types';
 import { ProjectStateService } from '../state/project-state.service';
 import { DashboardViewModel } from '../models/dashboard-view-model';
 
@@ -23,6 +27,7 @@ import { DashboardViewModel } from '../models/dashboard-view-model';
 })
 export class DashboardPageComponent implements OnInit {
   private readonly projectState = inject(ProjectStateService);
+  private readonly dialog = inject(Dialog);
 
   /**
    * Discriminated-union view model collapsed from the four state-service
@@ -67,8 +72,14 @@ export class DashboardPageComponent implements OnInit {
     this.projectState.loadProjects();
   }
 
-  protected onCreatePlaceholder(): void {
-    // Placeholder for #32 — the create-project modal will replace this handler.
-    // Intentionally a no-op for #31.
+  protected openCreateDialog(): void {
+    this.dialog.open<CreateProjectDialogResult>(CreateProjectDialogComponent, {
+      ariaLabelledBy: 'create-project-heading',
+      autoFocus: 'first-tabbable',
+      restoreFocus: true,
+      disableClose: false,
+      panelClass: 'create-project-dialog-panel',
+      backdropClass: 'create-project-dialog-backdrop'
+    });
   }
 }

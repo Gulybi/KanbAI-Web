@@ -1,0 +1,81 @@
+<form
+  class="create-project-dialog__form"
+  [formGroup]="form"
+  (ngSubmit)="onSubmit()"
+  novalidate
+>
+  <h2 id="create-project-heading" class="create-project-dialog__heading">
+    New Project
+  </h2>
+
+  <app-form-input
+    label="Title"
+    placeholder="e.g. Q2 Launch Plan"
+    [required]="true"
+    [control]="nameControl"
+  ></app-form-input>
+
+  <app-form-input
+    label="Description"
+    placeholder="Optional — a short summary of the project"
+    [multiline]="true"
+    [rows]="4"
+    [control]="descriptionControl"
+  ></app-form-input>
+
+  @if (errorMessage()) {
+    <div
+      class="create-project-dialog__error-banner"
+      role="alert"
+      aria-live="assertive"
+    >
+      <svg
+        class="create-project-dialog__error-banner-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <p class="create-project-dialog__error-banner-text">
+        {{ errorMessage() }}
+      </p>
+    </div>
+  }
+
+  <div class="create-project-dialog__actions">
+    <button
+      type="button"
+      class="create-project-dialog__cancel"
+      (click)="onCancel()"
+    >
+      Cancel
+    </button>
+
+    <app-form-button
+      type="submit"
+      class="create-project-dialog__submit"
+      [disabled]="form.invalid || submitting()"
+    >
+      @if (submitting()) {
+        <span aria-hidden="true">Creating…</span>
+        <span
+          class="create-project-dialog__submit-spinner"
+          aria-hidden="true"
+        ></span>
+        <span class="sr-only">Creating project, please wait.</span>
+      } @else {
+        Create project
+      }
+    </app-form-button>
+  </div>
+</form>
