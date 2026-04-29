@@ -1,140 +1,116 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { BehaviorSubject } from 'rxjs';
+import { vi } from 'vitest';
 import { LoginPageComponent } from './login-page.component';
+import { LoginContextBannerComponent } from './components/context-banner/context-banner.component';
+
+function makeActivatedRouteStub(initialParams: Record<string, string>) {
+  const subject = new BehaviorSubject(convertToParamMap(initialParams));
+  return {
+    subject,
+    stub: {
+      queryParamMap: subject.asObservable(),
+      snapshot: {
+        queryParamMap: convertToParamMap(initialParams)
+      }
+    }
+  };
+}
 
 describe('LoginPageComponent', () => {
   let component: LoginPageComponent;
   let fixture: ComponentFixture<LoginPageComponent>;
+  let mockRouter: { navigate: ReturnType<typeof vi.fn> };
+  let routeStub: ReturnType<typeof makeActivatedRouteStub>;
 
-  beforeEach(async () => {
+  async function createComponent(queryParams: Record<string, string>) {
+    routeStub = makeActivatedRouteStub(queryParams);
+    mockRouter = { navigate: vi.fn() };
+
     await TestBed.configureTestingModule({
-      imports: [LoginPageComponent]
+      imports: [LoginPageComponent],
+      providers: [
+        { provide: ActivatedRoute, useValue: routeStub.stub },
+        { provide: Router, useValue: mockRouter }
+      ]
     }).compileComponents();
 
     fixture = TestBed.createComponent(LoginPageComponent);
     component = fixture.componentInstance;
-  });
+    fixture.detectChanges();
+  }
 
   describe('Component Creation', () => {
-    it('should create', () => {
+    it('should create', async () => {
+      await createComponent({});
       expect(component).toBeTruthy();
     });
   });
 
-  describe('Rendering', () => {
-    it('should render main container with correct layout classes', () => {
-      fixture.detectChanges();
-
-      const container = fixture.nativeElement.querySelector('.flex.items-center.justify-center');
-      expect(container).toBeTruthy();
-      expect(container.classList.contains('min-h-screen')).toBe(true);
-      expect(container.classList.contains('bg-gray-100')).toBe(true);
+  describe('Rendering — base layout', () => {
+    beforeEach(async () => {
+      await createComponent({});
     });
 
-    it('should display Login Page heading', () => {
-      fixture.detectChanges();
-
+    it('renders the login card with placeholder copy', () => {
+      const card = fixture.nativeElement.querySelector('.login-page__card');
+      expect(card).toBeTruthy();
       const heading = fixture.debugElement.query(By.css('h1'));
-      expect(heading).toBeTruthy();
       expect(heading.nativeElement.textContent).toContain('Login Page');
     });
 
-    it('should display placeholder text for authentication UI', () => {
-      fixture.detectChanges();
-
-      const paragraph = fixture.debugElement.query(By.css('p'));
-      expect(paragraph).toBeTruthy();
-      expect(paragraph.nativeElement.textContent).toContain('Authentication UI will be implemented here.');
-    });
-
-    it('should apply card styling to content area', () => {
-      fixture.detectChanges();
-
-      const card = fixture.nativeElement.querySelector('.p-8.bg-white.rounded-lg.shadow-md');
-      expect(card).toBeTruthy();
-      expect(card.classList.contains('p-8')).toBe(true);
-      expect(card.classList.contains('bg-white')).toBe(true);
-      expect(card.classList.contains('rounded-lg')).toBe(true);
-      expect(card.classList.contains('shadow-md')).toBe(true);
-    });
-
-    it('should apply correct heading styles', () => {
-      fixture.detectChanges();
-
-      const heading = fixture.nativeElement.querySelector('h1');
-      expect(heading.classList.contains('text-2xl')).toBe(true);
-      expect(heading.classList.contains('font-bold')).toBe(true);
-      expect(heading.classList.contains('text-gray-800')).toBe(true);
-    });
-
-    it('should apply correct paragraph styles', () => {
-      fixture.detectChanges();
-
-      const paragraph = fixture.nativeElement.querySelector('p');
-      expect(paragraph.classList.contains('mt-4')).toBe(true);
-      expect(paragraph.classList.contains('text-gray-600')).toBe(true);
+    it('does not render the context banner when no returnUrl is present', () => {
+      const banner = fixture.debugElement.query(By.directive(LoginContextBannerComponent));
+      expect(banner).toBeNull();
     });
   });
 
-  describe('Layout Structure', () => {
-    it('should center content vertically and horizontally', () => {
-      fixture.detectChanges();
-
-      const outerContainer = fixture.nativeElement.querySelector('.flex.items-center.justify-center');
-      expect(outerContainer).toBeTruthy();
+  describe('Rendering — with safe returnUrl', () => {
+    beforeEach(async () => {
+      await createComponent({ returnUrl: '/board' });
     });
 
-    it('should fill minimum viewport height', () => {
-      fixture.detectChanges();
+    it('renders the context banner with the returnUrl', () => {
+      const banner = fixture.debugElement.query(By.directive(LoginContextBannerComponent));
+      expect(banner).not.toBeNull();
+      const instance = banner.componentInstance as LoginContextBannerComponent;
+      expect(instance.returnUrl).toBe('/board');
+    });
 
-      const container = fixture.nativeElement.querySelector('.min-h-screen');
-      expect(container).toBeTruthy();
+    it('expose returnUrlSafe() as the raw value', () => {
+      expect(component.returnUrlSafe()).toBe('/board');
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should render correctly without errors', () => {
-      expect(() => {
-        fixture.detectChanges();
-      }).not.toThrow();
+  describe('Rendering — with unsafe returnUrl', () => {
+    it('does not render the banner when returnUrl points outside the app', async () => {
+      await createComponent({ returnUrl: 'https://evil.example.com' });
+      const banner = fixture.debugElement.query(By.directive(LoginContextBannerComponent));
+      expect(banner).toBeNull();
+      expect(component.returnUrlSafe()).toBeNull();
     });
 
-    it('should not break with multiple detectChanges calls', () => {
-      fixture.detectChanges();
-      fixture.detectChanges();
-      fixture.detectChanges();
-
-      const heading = fixture.nativeElement.querySelector('h1');
-      expect(heading.textContent).toContain('Login Page');
+    it('does not render the banner when returnUrl is /login (redirect loop)', async () => {
+      await createComponent({ returnUrl: '/login' });
+      const banner = fixture.debugElement.query(By.directive(LoginContextBannerComponent));
+      expect(banner).toBeNull();
     });
+  });
 
-    it('should display all expected elements', () => {
-      fixture.detectChanges();
-
-      const heading = fixture.nativeElement.querySelector('h1');
-      const paragraph = fixture.nativeElement.querySelector('p');
-      const card = fixture.nativeElement.querySelector('.bg-white.rounded-lg');
-
-      expect(heading).toBeTruthy();
-      expect(paragraph).toBeTruthy();
-      expect(card).toBeTruthy();
+  describe('Cancel interaction', () => {
+    it('navigates back to /login (no query params) when banner emits cancel', async () => {
+      await createComponent({ returnUrl: '/board' });
+      component.onCancelReturn();
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
     });
   });
 
   describe('Change Detection Strategy', () => {
-    it('should use OnPush change detection', () => {
-      expect(component).toBeTruthy();
+    it('uses OnPush change detection', async () => {
+      await createComponent({});
       expect(fixture.componentRef.changeDetectorRef).toBeTruthy();
-    });
-  });
-
-  describe('Future Integration Points', () => {
-    it('should be ready for authentication form integration', () => {
-      fixture.detectChanges();
-
-      // Verify the card container exists where future form will be added
-      const card = fixture.nativeElement.querySelector('.p-8.bg-white');
-      expect(card).toBeTruthy();
     });
   });
 });

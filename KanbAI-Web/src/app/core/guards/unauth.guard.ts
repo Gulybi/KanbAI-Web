@@ -1,20 +1,19 @@
 import { inject } from '@angular/core';
-import { Router, CanActivateFn } from '@angular/router';
+import { CanActivateFn, Router } from '@angular/router';
 import { AuthStateService } from '../services/auth-state.service';
+import { AUTH_HOME_ROUTE } from '../constants/auth-routes';
 
 /**
- * Guard to protect routes intended for unauthenticated users only.
- * Redirects to /board if user is already authenticated.
+ * Guard that protects routes intended only for anonymous visitors
+ * (landing, login, register). Authenticated users are redirected to
+ * `AUTH_HOME_ROUTE` so they never see the login / register form or
+ * the public landing page while already signed in.
  */
-export const unauthGuard: CanActivateFn = (route, state) => {
+export const unauthGuard: CanActivateFn = () => {
   const authState = inject(AuthStateService);
   const router = inject(Router);
 
-  const isAuthenticated = authState.isAuthenticated();
-
-  if (isAuthenticated) {
-    return router.parseUrl('/board');
-  }
-
-  return true;
+  return authState.isAuthenticated()
+    ? router.createUrlTree([AUTH_HOME_ROUTE])
+    : true;
 };

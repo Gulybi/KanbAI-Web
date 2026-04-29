@@ -3,6 +3,9 @@ import { Router } from '@angular/router';
 import { Location } from '@angular/common';
 import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
+import { PROTECTED_PATHS, UNAUTH_ONLY_PATHS } from './core/constants/auth-routes';
+import { authGuard } from './core/guards/auth.guard';
+import { unauthGuard } from './core/guards/unauth.guard';
 
 describe('App Routing', () => {
   let router: Router;
@@ -55,10 +58,10 @@ describe('App Routing', () => {
       expect(location.path()).toBe('/login');
     });
 
-    it('should redirect /board to /login when unauthenticated (authGuard)', async () => {
+    it('should redirect /board to /login with returnUrl when unauthenticated (authGuard)', async () => {
       await router.navigate(['/board']);
-      // authGuard redirects to /login when not authenticated
-      expect(location.path()).toBe('/login');
+      // authGuard redirects to /login and preserves the attempted URL.
+      expect(location.path()).toBe('/login?returnUrl=%2Fboard');
     });
 
     it('should navigate from login to board when guard allows', async () => {
@@ -66,15 +69,15 @@ describe('App Routing', () => {
       expect(location.path()).toBe('/login');
 
       // Note: This test would need authStateService.setAuthState() to pass authGuard
-      // For now, it will redirect to /login due to authGuard
+      // For now, it will redirect to /login due to authGuard (with returnUrl preserved)
       await router.navigate(['/board']);
-      expect(location.path()).toBe('/login');
+      expect(location.path()).toBe('/login?returnUrl=%2Fboard');
     });
 
     it('should navigate from board to login', async () => {
-      // When unauthenticated, /board redirects to /login
+      // When unauthenticated, /board redirects to /login with returnUrl
       await router.navigate(['/board']);
-      expect(location.path()).toBe('/login');
+      expect(location.path()).toBe('/login?returnUrl=%2Fboard');
 
       await router.navigate(['/login']);
       expect(location.path()).toBe('/login');
@@ -104,16 +107,18 @@ describe('App Routing', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should reject navigation to invalid routes', async () => {
-      // Angular router throws an error for unmatched routes
-      // This is expected behavior until a wildcard route is added
-      await expect(router.navigate(['/invalid-route'])).rejects.toThrow();
+    it('redirects unknown paths to the landing route', async () => {
+      await router.navigate(['/invalid-route']);
+      // Wildcard redirects to ''; unauthGuard on '' allows anonymous visitors through.
+      expect(location.path()).toBe('');
     });
 
     it('should handle rapid route switching', async () => {
       await router.navigate(['/login']);
       await router.navigate(['/board']);
       await router.navigate(['/login']);
+      // After the final explicit navigate to '/login', the returnUrl from the
+      // prior /board redirect is cleared because we navigated to /login directly.
       expect(location.path()).toBe('/login');
     });
 
@@ -121,6 +126,45 @@ describe('App Routing', () => {
       await router.navigate(['/login/']);
       // Angular normalizes the path
       expect(location.path()).toMatch(/\/login\/?/);
+    });
+  });
+
+  describe('Guard Coverage', () => {
+    it('every path in PROTECTED_PATHS is registered with authGuard', () => {
+      for (const path of PROTECTED_PATHS) {
+        const route = routes.find(r => r.path === path);
+        // The contract is "IF registered, MUST have authGuard", not "must exist".
+        // Future additions to PROTECTED_PATHS (e.g. `/dashboard`) may land before
+        // their route is wired.
+        if (!route) continue;
+        expect(route.canActivate).toBeDefined();
+        expect(route.canActivate).toContain(authGuard);
+      }
+    });
+
+    it('every path in UNAUTH_ONLY_PATHS is registered with unauthGuard', () => {
+      for (const path of UNAUTH_ONLY_PATHS) {
+        const route = routes.find(r => r.path === path);
+        // Tolerates `/register` not being wired yet (out of scope for #27).
+        if (!route) continue;
+        expect(route.canActivate).toBeDefined();
+        expect(route.canActivate).toContain(unauthGuard);
+      }
+    });
+
+    it('declares a wildcard catch-all route', () => {
+      const wildcard = routes.find(r => r.path === '**');
+      expect(wildcard).toBeDefined();
+      expect(wildcard?.redirectTo).toBe('');
+    });
+
+    it('ensures every non-wildcard, non-redirect route has at least one guard', () => {
+      const unguarded = routes.filter(r =>
+        r.path !== '**' &&
+        !r.redirectTo &&
+        (!r.canActivate || r.canActivate.length === 0)
+      );
+      expect(unguarded).toEqual([]);
     });
   });
 });

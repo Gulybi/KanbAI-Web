@@ -6,15 +6,14 @@ export const routes: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('./features/landing/landing-page/landing-page.component').then(
-        (m) => m.LandingPageComponent,
-      ),
-    canActivate: [unauthGuard],
+      import('./features/landing/landing-page/landing-page.component').then(m => m.LandingPageComponent),
+    canActivate: [unauthGuard]
   },
   {
     path: 'login',
     loadComponent: () =>
-      import('./features/auth/login-page/login-page.component').then((m) => m.LoginPageComponent),
+      import('./features/auth/login-page/login-page.component').then(m => m.LoginPageComponent),
+    canActivate: [unauthGuard]
   },
   {
     path: 'register',
@@ -24,7 +23,15 @@ export const routes: Routes = [
   {
     path: 'board',
     loadComponent: () =>
-      import('./features/board/board-page/board-page.component').then((m) => m.BoardPageComponent),
-    canActivate: [authGuard],
+      import('./features/board/board-page/board-page.component').then(m => m.BoardPageComponent),
+    canActivate: [authGuard]
   },
+  // Wildcard composes with the `unauthGuard` on `''`: unknown paths fall through
+  // to the landing route, which then redirects authenticated users to
+  // AUTH_HOME_ROUTE and leaves anonymous visitors on the landing page.
+  {
+    path: '**',
+    redirectTo: '',
+    pathMatch: 'full'
+  }
 ];

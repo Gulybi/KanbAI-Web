@@ -1,0 +1,30 @@
+// Brand (sage green — calm, focused, non-aggressive)
+$brand-primary:        #8C9B7B;
+$brand-primary-hover:  #7A8A69;
+$brand-primary-light:  #E8EBE4;
+
+// Backgrounds
+$bg-main:              #FFFFFF;
+$bg-sidebar-dark:      #0B0B0B;   // navigation rail
+$bg-sidebar-light:     #F4F5F1;   // secondary sidebar / filters
+$bg-card:              #FFFFFF;
+$bg-card-dragging:     #FFFFFF;   // same fill, elevated shadow conveys state
+$bg-dropzone:          #F4F5F1;
+$bg-searchbar:         #F4F5F1;
+
+// Text
+$text-primary:         #1C1C1C;
+$text-secondary:       #7A7A7A;
+$text-tertiary:        #A1A1A1;
+$text-inverse:         #FFFFFF;
+$text-brand:           #8C9B7B;
+
+// Status (priority / progress)
+$status-high:          #E56B6F;   // coral — urgent
+$status-medium:        #4A6FA5;   // blue — in progress
+$status-average:       #E8B042;   // amber — attention
+$status-done:          #9CC5A1;   // sage — complete
+
+// Borders
+$border-light:         #EAEAEA;
+$border-dropzone:      #8C9B7B;   // sage dashed outline when hovering a drop target

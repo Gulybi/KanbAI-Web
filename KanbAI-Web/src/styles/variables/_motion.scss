@@ -1,0 +1,12 @@
+$motion-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);   // hover, focus
+$motion-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);   // card lift, panel open
+$motion-slow: 350ms cubic-bezier(0.2, 0, 0, 1);     // route transitions, drawer
+
+// Respect user preferences — clamp durations so transitionend/animationend
+// events still fire but the visible effect is instant.
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

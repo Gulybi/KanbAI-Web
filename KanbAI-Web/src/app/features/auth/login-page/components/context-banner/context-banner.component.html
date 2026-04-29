@@ -1,0 +1,25 @@
+<div class="context-banner" role="status">
+  <span class="context-banner__icon" aria-hidden="true">
+    <!-- Info glyph: a small "i" so the context cue is non-colour too. -->
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" focusable="false">
+      <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm0 4.75a1.25 1.25 0 1 1-1.25 1.25A1.25 1.25 0 0 1 12 6.75Zm1.5 10.75h-3v-1h.75v-4.5h-.75v-1h2.25v5.5h.75Z"/>
+    </svg>
+  </span>
+
+  <div class="context-banner__body">
+    <p class="context-banner__heading">Sign in to continue</p>
+    <p class="context-banner__meta">
+      You'll return to
+      <span class="context-banner__return-url">{{ returnUrl }}</span>
+      after you sign in.
+    </p>
+  </div>
+
+  <button
+    type="button"
+    class="context-banner__cancel"
+    (click)="onCancel()"
+    aria-label="Cancel return, sign in to home page instead">
+    Cancel
+  </button>
+</div>
