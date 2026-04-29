@@ -1,0 +1,106 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+
+:host {
+  display: block;
+}
+
+.error-state {
+  background-color: $bg-card;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-high;
+  border-radius: $radius-lg;
+  padding: $space-lg;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $space-md;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.error-state__header {
+  display: flex;
+  align-items: center;
+  gap: $space-sm;
+}
+
+.error-state__icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  color: $status-high;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error-state__title {
+  margin: 0;
+  font-family: $font-family-base;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $text-primary;
+}
+
+.error-state__message {
+  margin: 0;
+  font-size: $font-size-md;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+}
+
+.error-state__retry {
+  appearance: none;
+  border: none;
+  background-color: $brand-primary;
+  color: $text-inverse;
+  font-family: inherit;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-normal;
+
+  padding: $space-sm $space-lg;
+  min-height: 44px;
+  border-radius: $radius-md;
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xs;
+
+  transition:
+    background-color $motion-fast,
+    transform $motion-fast;
+
+  &:hover {
+    background-color: $brand-primary-hover;
+  }
+
+  &:active {
+    transform: translateY(1px);
+    background-color: $brand-primary-hover;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  &[disabled],
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

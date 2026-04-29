@@ -1,0 +1,12 @@
+<div class="skeleton-grid" aria-hidden="true" tabindex="-1">
+  @for (_ of placeholders(); track $index) {
+    <div class="skeleton-card">
+      <span class="skeleton-card__line skeleton-card__line--title"></span>
+      <span class="skeleton-card__line skeleton-card__line--description-1"></span>
+      <span class="skeleton-card__line skeleton-card__line--description-2"></span>
+      <span class="skeleton-card__line skeleton-card__line--description-3"></span>
+      <span class="skeleton-card__line skeleton-card__line--meta"></span>
+    </div>
+  }
+</div>
+<span class="skeleton-status" role="status" aria-live="polite">Loading projects…</span>

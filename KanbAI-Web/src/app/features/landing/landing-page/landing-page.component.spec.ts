@@ -116,11 +116,11 @@ describe('LandingPageComponent', () => {
   });
 
   describe('onSignUpClick()', () => {
-    it('should navigate to /login with register query param when called', () => {
+    it('should navigate to /register with register query param when called', () => {
       component.onSignUpClick();
 
       expect(mockRouter.navigate).toHaveBeenCalledWith(
-        ['/login'],
+        ['/register'],
         { queryParams: { mode: 'register' } }
       );
       expect(mockRouter.navigate).toHaveBeenCalledTimes(1);
@@ -151,7 +151,7 @@ describe('LandingPageComponent', () => {
       expect(mockRouter.navigate).toHaveBeenCalledTimes(2);
       expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
       expect(mockRouter.navigate).toHaveBeenCalledWith(
-        ['/login'],
+        ['/register'],
         { queryParams: { mode: 'register' } }
       );
     });
@@ -225,7 +225,7 @@ describe('LandingPageComponent', () => {
     it('AC: CTA button behavior - Sign Up navigates with query param', () => {
       component.onSignUpClick();
       expect(mockRouter.navigate).toHaveBeenCalledWith(
-        ['/login'],
+        ['/register'],
         { queryParams: { mode: 'register' } }
       );
     });

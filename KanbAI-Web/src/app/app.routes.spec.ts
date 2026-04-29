@@ -44,6 +44,18 @@ describe('App Routing', () => {
       expect(boardRoute).toBeTruthy();
       expect(boardRoute?.loadComponent).toBeDefined();
     });
+
+    it('should define dashboard route', () => {
+      const dashboardRoute = routes.find(r => r.path === 'dashboard');
+      expect(dashboardRoute).toBeTruthy();
+      expect(dashboardRoute?.loadComponent).toBeDefined();
+    });
+
+    it('guards the dashboard route with authGuard', () => {
+      const dashboardRoute = routes.find(r => r.path === 'dashboard');
+      expect(dashboardRoute?.canActivate).toBeDefined();
+      expect(dashboardRoute?.canActivate).toContain(authGuard);
+    });
   });
 
   describe('Route Navigation', () => {
@@ -82,6 +94,11 @@ describe('App Routing', () => {
       await router.navigate(['/login']);
       expect(location.path()).toBe('/login');
     });
+
+    it('should redirect /dashboard to /login with returnUrl when unauthenticated (authGuard)', async () => {
+      await router.navigate(['/dashboard']);
+      expect(location.path()).toBe('/login?returnUrl=%2Fdashboard');
+    });
   });
 
   describe('Lazy Loading', () => {
@@ -101,6 +118,16 @@ describe('App Routing', () => {
 
       if (boardRoute?.loadComponent) {
         const component = await boardRoute.loadComponent();
+        expect(component).toBeDefined();
+      }
+    });
+
+    it('should lazy load DashboardPageComponent', async () => {
+      const dashboardRoute = routes.find(r => r.path === 'dashboard');
+      expect(dashboardRoute?.loadComponent).toBeDefined();
+
+      if (dashboardRoute?.loadComponent) {
+        const component = await dashboardRoute.loadComponent();
         expect(component).toBeDefined();
       }
     });

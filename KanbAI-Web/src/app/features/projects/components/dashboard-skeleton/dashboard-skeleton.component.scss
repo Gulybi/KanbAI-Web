@@ -1,0 +1,81 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/motion' as *;
+
+:host {
+  display: block;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-md;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $space-lg;
+  }
+
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.skeleton-card {
+  background-color: $bg-card;
+  border: 1px solid $border-light;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+  padding: $space-lg;
+  min-height: 168px;
+
+  display: flex;
+  flex-direction: column;
+  gap: $space-sm;
+
+  opacity: 0.6;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.skeleton-card__line {
+  display: block;
+  background-color: $bg-sidebar-light;
+  border-radius: $radius-sm;
+  height: 12px;
+}
+
+.skeleton-card__line--title {
+  height: 18px;
+  width: 60%;
+}
+
+.skeleton-card__line--description-1 { width: 100%; }
+.skeleton-card__line--description-2 { width: 92%; }
+.skeleton-card__line--description-3 { width: 76%; }
+
+.skeleton-card__line--meta {
+  height: 10px;
+  width: 40%;
+  margin-top: auto;
+}
+
+// Visually hidden — the loading announcement is screen-reader only.
+.skeleton-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1;   }
+}

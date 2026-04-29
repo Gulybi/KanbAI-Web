@@ -1,0 +1,32 @@
+@use 'src/styles/variables/spacing' as *;
+
+:host {
+  display: block;
+}
+
+.project-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-md;
+
+  // AC-mandated grid breakpoints — differ from canonical $bp-sm (576) and
+  // $bp-lg (992). Raw-pixel media queries are scoped to the grid column
+  // count only, as documented in the design spec.
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $space-lg;
+  }
+
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.project-grid__item {
+  display: block;
+  height: 100%;
+}
