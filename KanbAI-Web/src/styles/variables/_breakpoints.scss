@@ -1,0 +1,12 @@
+$bp-sm:  576px;   // large phone
+$bp-md:  768px;   // tablet
+$bp-lg:  992px;   // small laptop — kanban board becomes horizontal
+$bp-xl: 1200px;   // desktop
+$bp-2xl: 1400px;  // large desktop
+
+@mixin respond-to($bp) {
+  @if $bp == 'sm' { @media (min-width: $bp-sm)  { @content; } }
+  @if $bp == 'md' { @media (min-width: $bp-md)  { @content; } }
+  @if $bp == 'lg' { @media (min-width: $bp-lg)  { @content; } }
+  @if $bp == 'xl' { @media (min-width: $bp-xl)  { @content; } }
+}

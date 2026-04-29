@@ -1,1 +1,31 @@
-// Component-specific styles if needed
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/motion' as *;
+
+// Guard-evaluating skeleton — reserved for the future rehydration issue.
+// #27 does NOT wire this to the template; the styling is defined now so
+// that the follow-up can drop it in without re-opening the design.
+.board-page__guard-skeleton {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 300px;
+  gap: $space-lg;
+  padding: $space-lg;
+
+  overflow-x: auto;
+}
+
+.board-page__guard-skeleton-column {
+  height: 480px;
+  background: $bg-sidebar-light;
+  border-radius: $radius-lg;
+
+  opacity: 0.6;
+  animation: guard-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes guard-skeleton-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1;   }
+}

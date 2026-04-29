@@ -1,74 +1,40 @@
-import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import {
-  FormBuilder,
-  FormGroup,
-  ReactiveFormsModule,
-  Validators,
-  FormControl,
-} from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
-import { AuthService } from '../../../core/services/AuthService';
-import { FormCardComponent } from '../components/form-card/form-card.component';
-import { FormInputComponent } from '../components/form-input/form-input.component';
-import { FormButtonComponent } from '../components/form-button/form-button.component';
+import { ActivatedRoute, Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { LoginContextBannerComponent } from './components/context-banner/context-banner.component';
+import { isSafeReturnUrl } from '../../../core/guards/return-url.util';
+import { LOGIN_ROUTE } from '../../../core/constants/auth-routes';
 
 @Component({
   selector: 'app-login-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    FormCardComponent,
-    FormInputComponent,
-    FormButtonComponent,
-    RouterLink,
-  ],
+  imports: [CommonModule, LoginContextBannerComponent],
   templateUrl: './login-page.component.html',
   styleUrl: './login-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LoginPageComponent {
-  private fb = inject(FormBuilder);
-  private authService = inject(AuthService);
-  private router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
-  public loginForm: FormGroup = this.fb.group({
-    email: ['', [Validators.required, Validators.email]],
-    password: ['', [Validators.required]],
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap
   });
 
-  public isLoading: boolean = false;
+  /**
+   * The `returnUrl` query param, but only exposed when it passes the
+   * safety check. When the raw value is missing, unsafe, or external,
+   * this returns `null` and the context banner is not rendered.
+   */
+  readonly returnUrlSafe = computed<string | null>(() => {
+    const raw = this.queryParams().get('returnUrl');
+    return isSafeReturnUrl(raw) ? raw : null;
+  });
 
-  // Getters for strictly typed form controls
-  get emailControl(): FormControl {
-    return this.loginForm.get('email') as FormControl;
-  }
-
-  get passwordControl(): FormControl {
-    return this.loginForm.get('password') as FormControl;
-  }
-
-  onSubmit(): void {
-    if (this.loginForm.valid) {
-      this.isLoading = true;
-      const credentials = this.loginForm.value;
-
-      this.authService.login(credentials).subscribe({
-        next: (response) => {
-          localStorage.setItem('access_token', response.token);
-          this.router.navigate(['/']);
-        },
-        error: (err) => {
-          console.error('Login failed', err);
-          this.isLoading = false;
-        },
-        complete: () => {
-          this.isLoading = false;
-        },
-      });
-    } else {
-      this.loginForm.markAllAsTouched();
-    }
+  onCancelReturn(): void {
+    // Navigate to /login without the returnUrl query param — this tears the
+    // banner down and signals the user has abandoned their original destination.
+    this.router.navigate([LOGIN_ROUTE]);
   }
 }

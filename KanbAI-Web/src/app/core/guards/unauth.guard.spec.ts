@@ -2,16 +2,17 @@ import { TestBed } from '@angular/core/testing';
 import { Router, UrlTree } from '@angular/router';
 import { unauthGuard } from './unauth.guard';
 import { AuthStateService } from '../services/auth-state.service';
+import { AUTH_HOME_ROUTE } from '../constants/auth-routes';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
 
 describe('unauthGuard', () => {
-  let mockRouter: { parseUrl: ReturnType<typeof vi.fn> };
+  let mockRouter: { createUrlTree: ReturnType<typeof vi.fn> };
   let mockAuthStateService: Partial<AuthStateService>;
 
   beforeEach(() => {
     mockRouter = {
-      parseUrl: vi.fn()
+      createUrlTree: vi.fn()
     };
     mockAuthStateService = {
       isAuthenticated: signal(false)
@@ -34,36 +35,37 @@ describe('unauthGuard', () => {
       );
 
       expect(result).toBe(true);
-      expect(mockRouter.parseUrl).not.toHaveBeenCalled();
+      expect(mockRouter.createUrlTree).not.toHaveBeenCalled();
     });
   });
 
   describe('Authenticated User', () => {
-    it('should redirect to /board when user is authenticated', () => {
+    it('should redirect to AUTH_HOME_ROUTE when user is authenticated', () => {
       const mockUrlTree = {} as UrlTree;
-      mockRouter.parseUrl.mockReturnValue(mockUrlTree);
+      mockRouter.createUrlTree.mockReturnValue(mockUrlTree);
       (mockAuthStateService.isAuthenticated as any).set(true);
 
       const result = TestBed.runInInjectionContext(() =>
         unauthGuard({} as any, {} as any)
       );
 
-      expect(mockRouter.parseUrl).toHaveBeenCalledWith('/board');
+      expect(mockRouter.createUrlTree).toHaveBeenCalledWith([AUTH_HOME_ROUTE]);
       expect(result).toBe(mockUrlTree);
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle state changes correctly', () => {
-      (mockAuthStateService.isAuthenticated as any).set(true);
+      const mockUrlTree = {} as UrlTree;
+      mockRouter.createUrlTree.mockReturnValue(mockUrlTree);
 
+      (mockAuthStateService.isAuthenticated as any).set(true);
       let result = TestBed.runInInjectionContext(() =>
         unauthGuard({} as any, {} as any)
       );
-      expect(result).not.toBe(true);
+      expect(result).toBe(mockUrlTree);
 
       (mockAuthStateService.isAuthenticated as any).set(false);
-
       result = TestBed.runInInjectionContext(() =>
         unauthGuard({} as any, {} as any)
       );

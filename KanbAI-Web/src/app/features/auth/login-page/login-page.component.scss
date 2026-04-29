@@ -1,1 +1,36 @@
-// Component-specific styles if needed
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 100vh;
+  background: $bg-main;
+  padding: $space-xl $space-md;
+}
+
+.login-page__column {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: $space-lg;
+}
+
+.login-page__card {
+  background: $bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+  padding: $space-xl;
+
+  @include respond-to('md') {
+    padding: $space-xl $space-xxl;
+  }
+}

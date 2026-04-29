@@ -1,0 +1,132 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+.context-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $space-sm;
+
+  max-width: 420px;           // matches login card max-width
+  width: 100%;
+  margin: 0 auto $space-lg;   // sits above login card with breathing room
+  padding: $space-md $space-lg;
+
+  background: $brand-primary-light;
+  border-radius: $radius-md;
+  border-left: 4px solid $brand-primary;
+
+  font-family: $font-family-base;
+
+  // Entrance motion — subtle, acknowledges the redirect without being showy.
+  opacity: 0;
+  transform: translateY(-4px);
+  animation: context-banner-enter $motion-fast forwards;
+
+  @include respond-to('md') {
+    flex-direction: row;
+    align-items: center;
+    gap: $space-md;
+  }
+}
+
+.context-banner__icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background: $brand-primary;
+  color: $text-inverse;
+  border-radius: $radius-circle;
+}
+
+.context-banner__body {
+  flex: 1;
+  min-width: 0; // allow text truncation inside returnUrl display
+}
+
+.context-banner__heading {
+  margin: 0 0 $space-xxs;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-normal;
+  color: $text-primary;
+}
+
+.context-banner__meta {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+}
+
+.context-banner__return-url {
+  color: $text-primary;
+  font-weight: $font-weight-medium;
+
+  // Truncate absurdly long returnUrls so the banner height is bounded.
+  display: inline-block;
+  max-width: 260px;
+  vertical-align: bottom;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // Mobile: allow it to use the available line width instead of a hard cap.
+  @media (max-width: #{$bp-md - 1px}) {
+    max-width: 100%;
+  }
+}
+
+.context-banner__cancel {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: $space-xs $space-sm;
+
+  font-family: $font-family-base;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $brand-primary;
+  cursor: pointer;
+
+  // Underline is the primary non-colour affordance (the brand-on-brand-light
+  // pair is sub-AA for text), revealed on hover/focus.
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+
+  transition: color $motion-fast, text-decoration-color $motion-fast;
+
+  &:hover {
+    color: $brand-primary-hover;
+    text-decoration-color: currentColor;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    text-decoration-color: currentColor;
+    border-radius: $radius-sm;
+  }
+
+  // Touch target: enforce 44x44 on coarse pointers.
+  @media (hover: none) and (pointer: coarse) {
+    min-width: 44px;
+    min-height: 44px;
+    padding: $space-sm $space-md;
+  }
+}
+
+@keyframes context-banner-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
