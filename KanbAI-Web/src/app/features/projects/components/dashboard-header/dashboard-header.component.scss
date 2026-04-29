@@ -1,0 +1,39 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+}
+
+.dashboard-header {
+  display: flex;
+  flex-direction: column;
+  gap: $space-xs;
+  padding-bottom: $space-md;
+  border-bottom: 1px solid $border-light;
+}
+
+.dashboard-header__title {
+  margin: 0;
+  font-family: $font-family-base;
+  font-size: $font-size-xxl;
+  font-weight: $font-weight-bold;
+  line-height: $line-height-tight;
+  color: $text-primary;
+  letter-spacing: -0.01em;
+
+  @include respond-to('md') {
+    font-size: 28px;
+  }
+}
+
+.dashboard-header__subtitle {
+  margin: 0;
+  font-size: $font-size-md;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+  max-width: 60ch;
+}

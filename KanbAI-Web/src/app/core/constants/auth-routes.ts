@@ -9,7 +9,7 @@
  * no explicit `returnUrl`. Also used by `unauthGuard` when redirecting
  * an already-authenticated user away from `/login`, `/register`, or `/`.
  */
-export const AUTH_HOME_ROUTE = '/board';
+export const AUTH_HOME_ROUTE = '/dashboard';
 
 /**
  * Canonical path to the login page. Used by `authGuard` when redirecting
@@ -32,7 +32,7 @@ export const REGISTER_ROUTE = '/register';
  *
  * Add new authenticated routes here as they land (e.g., `/dashboard`).
  */
-export const PROTECTED_PATHS: readonly string[] = ['board'];
+export const PROTECTED_PATHS: readonly string[] = ['board', 'dashboard'];
 
 /**
  * Paths that MUST be protected by `unauthGuard` (visible to anonymous

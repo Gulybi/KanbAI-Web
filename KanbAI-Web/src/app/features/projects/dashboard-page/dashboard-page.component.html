@@ -1,0 +1,25 @@
+<main class="dashboard-page">
+  <app-dashboard-header></app-dashboard-header>
+
+  <div class="dashboard-page__content">
+    @switch (vm().status) {
+      @case ('loading') {
+        <app-dashboard-skeleton></app-dashboard-skeleton>
+      }
+      @case ('success') {
+        <app-project-grid [projects]="$any(vm()).projects"></app-project-grid>
+      }
+      @case ('empty') {
+        <app-dashboard-empty-state
+          (createClick)="onCreatePlaceholder()"
+        ></app-dashboard-empty-state>
+      }
+      @case ('error') {
+        <app-dashboard-error-state
+          [message]="$any(vm()).message"
+          (retry)="retry()"
+        ></app-dashboard-error-state>
+      }
+    }
+  </div>
+</main>

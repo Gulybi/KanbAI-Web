@@ -1,0 +1,36 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+  background-color: $bg-main;
+  min-height: 100%;
+  font-family: $font-family-base;
+  color: $text-primary;
+}
+
+.dashboard-page {
+  padding: $space-lg $space-md $space-xxl;
+  max-width: 1280px;
+  margin: 0 auto;
+
+  display: flex;
+  flex-direction: column;
+  gap: $space-xl;
+
+  @include respond-to('md') {
+    padding: $space-xl $space-lg $space-xxl;
+    gap: $space-xl;
+  }
+
+  @include respond-to('lg') {
+    padding: $space-xl $space-xl $space-xxl;
+  }
+}
+
+.dashboard-page__content {
+  min-height: 360px;
+  display: block;
+}

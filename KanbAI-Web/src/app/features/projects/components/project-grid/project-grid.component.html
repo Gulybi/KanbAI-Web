@@ -1,0 +1,7 @@
+<ul class="project-grid" role="list">
+  @for (project of projects; track trackById($index, project)) {
+    <li class="project-grid__item" role="listitem">
+      <app-project-card [project]="project"></app-project-card>
+    </li>
+  }
+</ul>

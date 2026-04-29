@@ -1,0 +1,141 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.project-card {
+  background-color: $bg-card;
+  border: 1px solid $border-light;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+
+  padding: $space-lg;
+  min-height: 168px;
+
+  display: flex;
+  flex-direction: column;
+  gap: $space-sm;
+
+  cursor: default;
+
+  transition:
+    transform $motion-fast,
+    box-shadow $motion-fast;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: $shadow-card-hover;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+.project-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $space-sm;
+  min-height: 28px;
+}
+
+.project-card__title {
+  margin: 0;
+  font-family: $font-family-base;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $text-primary;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.project-card__badge {
+  flex-shrink: 0;
+  padding: $space-xxs $space-xs;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-tight;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.project-card__badge--owner {
+  background-color: $brand-primary-light;
+  color: $text-primary;
+}
+
+.project-card__badge--member {
+  background-color: $bg-sidebar-light;
+  color: $text-primary;
+}
+
+.project-card__badge--default {
+  background-color: $bg-sidebar-light;
+  color: $text-secondary;
+}
+
+.project-card__description {
+  margin: 0;
+  font-size: $font-size-md;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+
+  flex-grow: 1;
+}
+
+.project-card__description--empty {
+  color: $text-tertiary;
+  font-style: italic;
+}
+
+.project-card__meta {
+  display: flex;
+  align-items: center;
+  gap: $space-xs;
+  margin-top: $space-xxs;
+  padding-top: $space-sm;
+  border-top: 1px solid $border-light;
+
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-secondary;
+}
+
+.project-card__meta-label {
+  color: $text-tertiary;
+  font-weight: $font-weight-regular;
+}
+
+.project-card__meta-date {
+  color: $text-secondary;
+}
+
+.project-card__meta-date--empty {
+  color: $text-tertiary;
+}

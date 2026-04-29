@@ -1,0 +1,38 @@
+<article
+  class="project-card"
+  tabindex="0"
+  [attr.aria-labelledby]="titleId()"
+>
+  <div class="project-card__header">
+    <h2
+      class="project-card__title"
+      [id]="titleId()"
+      [title]="project.name"
+    >{{ project.name }}</h2>
+
+    <span
+      class="project-card__badge"
+      [class.project-card__badge--owner]="roleVariant() === 'owner'"
+      [class.project-card__badge--member]="roleVariant() === 'member'"
+      [class.project-card__badge--default]="roleVariant() === 'default'"
+    >{{ project.role | titlecase }}</span>
+  </div>
+
+  @if (isDescriptionEmpty()) {
+    <p class="project-card__description project-card__description--empty">No description</p>
+  } @else {
+    <p
+      class="project-card__description"
+      [title]="project.description"
+    >{{ project.description }}</p>
+  }
+
+  <div class="project-card__meta">
+    <span class="project-card__meta-label">Created</span>
+    @if (isDateEmpty()) {
+      <span class="project-card__meta-date project-card__meta-date--empty">—</span>
+    } @else {
+      <span class="project-card__meta-date">{{ project.createdAt | date:'mediumDate' }}</span>
+    }
+  </div>
+</article>

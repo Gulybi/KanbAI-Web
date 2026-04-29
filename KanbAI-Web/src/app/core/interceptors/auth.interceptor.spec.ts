@@ -1,17 +1,52 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { vi } from 'vitest';
 import { authInterceptor } from './auth.interceptor';
 
 describe('authInterceptor', () => {
   let httpClient: HttpClient;
   let httpTesting: HttpTestingController;
+  let originalLocalStorage: Storage | undefined;
+
+  // The interceptor calls `localStorage.getItem('jwt_token')` for requests
+  // whose URL starts with `environment.apiUrl`. Vitest's default `node`
+  // environment has no `localStorage`, so we stub an in-memory shim for
+  // the duration of this suite and restore the original afterward.
+  beforeAll(() => {
+    originalLocalStorage = (globalThis as { localStorage?: Storage }).localStorage;
+    const store = new Map<string, string>();
+    (globalThis as { localStorage: Storage }).localStorage = {
+      getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+      setItem: (key: string, value: string) => { store.set(key, String(value)); },
+      removeItem: (key: string) => { store.delete(key); },
+      clear: () => { store.clear(); },
+      key: (index: number) => Array.from(store.keys())[index] ?? null,
+      get length() { return store.size; }
+    } as Storage;
+  });
+
+  afterAll(() => {
+    if (originalLocalStorage === undefined) {
+      delete (globalThis as { localStorage?: Storage }).localStorage;
+    } else {
+      (globalThis as { localStorage: Storage }).localStorage = originalLocalStorage;
+    }
+  });
 
   beforeEach(() => {
+    localStorage.clear();
+
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([authInterceptor])),
-        provideHttpClientTesting()
+        provideHttpClientTesting(),
+        // The interceptor redirects to '/login' on 401 by calling
+        // `router.navigate(['/login'])`. Without a stub, the default
+        // router rejects with NG04002 ("Cannot match any routes") because
+        // no routes are registered in this test bed.
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } }
       ]
     });
 

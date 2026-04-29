@@ -15,7 +15,8 @@
       "Bash(npx tsc *)",
       "Bash(npx vitest *)",
       "mcp__plugin_pr-compliance_github__get_issue",
-      "Bash(tee test-output.log)"
+      "Bash(tee test-output.log)",
+      "Read(//tmp/**)"
     ],
     "additionalDirectories": [
       "C:\\temp\\KanbAI-Web\\docs\\handoffs",

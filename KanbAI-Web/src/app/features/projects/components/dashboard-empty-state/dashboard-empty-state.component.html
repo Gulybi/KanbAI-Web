@@ -1,0 +1,24 @@
+<section class="empty-state">
+  <div class="empty-state__icon" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+         stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+      <line x1="12" y1="9" x2="12" y2="15"></line>
+      <line x1="9" y1="12" x2="15" y2="12"></line>
+    </svg>
+  </div>
+
+  <h2 class="empty-state__title">No projects yet</h2>
+
+  <p class="empty-state__body">
+    Projects help you organize your work into focused boards. Create your first project
+    to get started.
+  </p>
+
+  <button
+    type="button"
+    class="empty-state__cta"
+    (click)="onCreateClick()"
+  >Create your first project</button>
+</section>
