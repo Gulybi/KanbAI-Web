@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, Input, computed, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  EventEmitter,
+  Input,
+  Output,
+  computed,
+  signal
+} from '@angular/core';
 import { CommonModule, DatePipe, TitleCasePipe } from '@angular/common';
 import { ProjectSummary } from '../../models/project.model';
 
@@ -21,6 +29,9 @@ export class ProjectCardComponent {
     // Guarded by @Input({ required: true }); template is only rendered after set.
     return this._project()!;
   }
+
+  /** Emitted when the owner-only Manage-members icon-button is activated. */
+  @Output() manageMembersClick = new EventEmitter<ProjectSummary>();
 
   /** Stable id used by the template for aria-labelledby. */
   protected readonly titleId = computed(() => {
@@ -45,6 +56,9 @@ export class ProjectCardComponent {
     return 'default';
   });
 
+  /** True when the viewer owns this project and can manage its members. */
+  protected readonly canManage = computed(() => this.roleVariant() === 'owner');
+
   /** Formatted date string, or "—" if the ISO value is unparseable. */
   protected readonly formattedDate = computed(() => {
     const current = this._project();
@@ -58,4 +72,10 @@ export class ProjectCardComponent {
 
   /** True when the formatted date is the fallback dash. */
   protected readonly isDateEmpty = computed(() => this.formattedDate() === '—');
+
+  protected onManageMembers(event: Event): void {
+    // Prevent the parent card's click/tabindex interactions from firing.
+    event.stopPropagation();
+    this.manageMembersClick.emit(this.project);
+  }
 }

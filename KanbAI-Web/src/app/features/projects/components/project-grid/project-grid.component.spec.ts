@@ -84,4 +84,20 @@ describe('ProjectGridComponent', () => {
     // Assert
     expect(key).toBe(project.id);
   });
+
+  // ------------------------------------------------------------------
+  // manageMembersClick re-emit (issue #33)
+  // ------------------------------------------------------------------
+  it('re-emits manageMembersClick from a child card', () => {
+    const projects = makeProjects(2);
+    fixture.componentRef.setInput('projects', projects);
+    fixture.detectChanges();
+
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.manageMembersClick.subscribe(p => (emitted = p));
+
+    const cards = fixture.debugElement.queryAll(By.directive(ProjectCardComponent));
+    (cards[1].componentInstance as ProjectCardComponent).manageMembersClick.emit(projects[1]);
+    expect(emitted).toEqual(projects[1]);
+  });
 });

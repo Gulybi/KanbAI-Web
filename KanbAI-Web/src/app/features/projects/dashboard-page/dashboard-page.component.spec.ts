@@ -13,6 +13,7 @@ import { DashboardEmptyStateComponent } from '../components/dashboard-empty-stat
 import { DashboardErrorStateComponent } from '../components/dashboard-error-state/dashboard-error-state.component';
 import { DashboardHeaderComponent } from '../components/dashboard-header/dashboard-header.component';
 import { CreateProjectDialogComponent } from '../components/create-project-dialog/create-project-dialog.component';
+import { MembersDialogComponent } from '../components/members-dialog/members-dialog.component';
 
 interface ProjectStateMock {
   projects: WritableSignal<ProjectSummary[]>;
@@ -205,6 +206,34 @@ describe('DashboardPageComponent', () => {
 
     const grid = fixture.debugElement.query(By.directive(ProjectGridComponent));
     expect(grid).toBeNull();
+  });
+
+  // ------------------------------------------------------------------
+  // openMembersDialog (issue #33)
+  // ------------------------------------------------------------------
+  it('opens the Members dialog when the grid emits manageMembersClick', async () => {
+    const { fixture, mock, dialog } = await mount();
+    const projects = makeProjects(2);
+    mock.projects.set(projects);
+    mock.hasLoaded.set(true);
+    mock.isLoading.set(false);
+    fixture.detectChanges();
+
+    const grid = fixture.debugElement.query(By.directive(ProjectGridComponent));
+    (grid.componentInstance as ProjectGridComponent).manageMembersClick.emit(projects[0]);
+    fixture.detectChanges();
+
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    expect(dialog.open).toHaveBeenCalledWith(
+      MembersDialogComponent,
+      expect.objectContaining({
+        data: { project: projects[0] },
+        ariaLabelledBy: 'members-dialog-title',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+        panelClass: 'members-dialog-panel'
+      })
+    );
   });
 
   it('re-renders reactively when the state service signals change after initial mount', async () => {

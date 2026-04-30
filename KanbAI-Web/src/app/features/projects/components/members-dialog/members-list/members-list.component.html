@@ -1,0 +1,13 @@
+<ul class="members-list" role="list">
+  @for (member of members; track trackByUserId($index, member)) {
+    <li role="listitem">
+      <app-member-row
+        [member]="member"
+        [isSelf]="isSelf(member)"
+        [canRemove]="canRemove(member)"
+        [isPending]="isPending(member)"
+        (removeClick)="onRowRemove($event)"
+      ></app-member-row>
+    </li>
+  }
+</ul>

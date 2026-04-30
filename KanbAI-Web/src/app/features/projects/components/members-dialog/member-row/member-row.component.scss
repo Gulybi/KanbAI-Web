@@ -1,0 +1,212 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: $space-sm;
+  padding: $space-sm 0;
+  min-height: 56px;
+
+  transition:
+    background-color $motion-fast,
+    opacity $motion-base;
+
+  &.member-row--pending {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
+
+.member-row__avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: $radius-circle;
+  background-color: $brand-primary-light;
+  color: $text-primary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.member-row__identity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member-row__name-line {
+  display: flex;
+  align-items: baseline;
+  gap: $space-xs;
+  min-width: 0;
+}
+
+.member-row__name {
+  margin: 0;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $text-primary;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.member-row__self-indicator {
+  flex-shrink: 0;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-secondary;
+}
+
+.member-row__email {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-row__badge-slot {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+
+  // Reused classes from project-card.component.scss. Redefined here only
+  // because OnPush child components do not inherit global unencapsulated
+  // styles through the component's own shadow boundary. The visual
+  // language matches project-card exactly.
+  .project-card__badge {
+    padding: $space-xxs $space-xs;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    line-height: $line-height-tight;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .project-card__badge--owner {
+    background-color: $brand-primary-light;
+    color: $text-primary;
+  }
+
+  .project-card__badge--member {
+    background-color: $bg-sidebar-light;
+    color: $text-primary;
+  }
+
+  .project-card__badge--default {
+    background-color: $bg-sidebar-light;
+    color: $text-secondary;
+  }
+}
+
+.member-row__remove {
+  appearance: none;
+  flex-shrink: 0;
+
+  background-color: transparent;
+  color: $status-high;
+  border: 1px solid $border-light;
+  border-radius: $radius-md;
+  padding: $space-xxs $space-sm;
+  min-height: 36px;
+  min-width: 88px;
+
+  font-family: $font-family-base;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: 1;
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xxs;
+
+  transition:
+    background-color $motion-fast,
+    border-color $motion-fast,
+    color $motion-fast;
+
+  &:hover:not(:disabled) {
+    background-color: $status-high;
+    border-color: $status-high;
+    color: $text-inverse;
+  }
+
+  &:active:not(:disabled) {
+    background-color: $status-high;
+    border-color: $status-high;
+    color: $text-inverse;
+    transform: translateY(1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $status-high;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  @media (max-width: #{$bp-md - 1px}) {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+
+.member-row__remove-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid $bg-sidebar-light;
+  border-top-color: $status-high;
+  border-radius: $radius-circle;
+  animation: member-row-remove-spin 1s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    border-style: dotted;
+  }
+}
+
+@keyframes member-row-remove-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: #{$bp-md - 1px}) {
+  .member-row {
+    flex-wrap: wrap;
+  }
+
+  .member-row__remove {
+    flex-basis: 100%;
+    margin-top: $space-xs;
+  }
+}

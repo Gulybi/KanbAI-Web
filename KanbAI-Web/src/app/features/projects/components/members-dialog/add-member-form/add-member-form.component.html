@@ -1,0 +1,60 @@
+<form
+  class="add-member-form"
+  (ngSubmit)="onSubmit()"
+  novalidate
+>
+  <h3 class="add-member-form__heading">Add a member</h3>
+
+  @if (errorMessage) {
+    <div
+      class="add-member-form__error"
+      role="alert"
+      aria-live="assertive"
+    >
+      <svg
+        class="add-member-form__error-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <p class="add-member-form__error-text">{{ errorMessage }}</p>
+    </div>
+  }
+
+  <div class="add-member-form__row">
+    <div class="add-member-form__input" #emailInputWrapper>
+      <app-form-input
+        label="Email"
+        type="email"
+        placeholder="name@example.com"
+        [required]="true"
+        [control]="emailControl"
+      ></app-form-input>
+    </div>
+
+    <app-form-button
+      type="submit"
+      class="add-member-form__submit"
+      [disabled]="disabled || emailControl.invalid"
+    >
+      @if (disabled) {
+        <span aria-hidden="true">Adding…</span>
+        <span class="add-member-form__submit-spinner" aria-hidden="true"></span>
+        <span class="sr-only">Adding member, please wait.</span>
+      } @else {
+        Add
+      }
+    </app-form-button>
+  </div>
+</form>
