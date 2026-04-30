@@ -1,0 +1,23 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+
+:host {
+  display: block;
+}
+
+.members-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  > li + li {
+    border-top: 1px solid $border-light;
+  }
+
+  > li:hover {
+    background-color: $bg-sidebar-light;
+  }
+}

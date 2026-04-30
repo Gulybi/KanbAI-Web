@@ -8,8 +8,14 @@ import { DashboardErrorStateComponent } from '../components/dashboard-error-stat
 import { ProjectGridComponent } from '../components/project-grid/project-grid.component';
 import { CreateProjectDialogComponent } from '../components/create-project-dialog/create-project-dialog.component';
 import { CreateProjectDialogResult } from '../components/create-project-dialog/create-project-dialog.types';
+import { MembersDialogComponent } from '../components/members-dialog/members-dialog.component';
+import {
+  MembersDialogData,
+  MembersDialogResult
+} from '../components/members-dialog/members-dialog.types';
 import { ProjectStateService } from '../state/project-state.service';
 import { DashboardViewModel } from '../models/dashboard-view-model';
+import { ProjectSummary } from '../models/project.model';
 
 @Component({
   selector: 'app-dashboard-page',
@@ -81,5 +87,20 @@ export class DashboardPageComponent implements OnInit {
       panelClass: 'create-project-dialog-panel',
       backdropClass: 'create-project-dialog-backdrop'
     });
+  }
+
+  protected openMembersDialog(project: ProjectSummary): void {
+    this.dialog.open<MembersDialogResult, MembersDialogData, MembersDialogComponent>(
+      MembersDialogComponent,
+      {
+        data: { project },
+        ariaLabelledBy: 'members-dialog-title',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+        disableClose: false,
+        panelClass: 'members-dialog-panel',
+        backdropClass: 'members-dialog-backdrop'
+      }
+    );
   }
 }

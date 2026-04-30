@@ -1,0 +1,23 @@
+<h2
+  id="remove-member-confirm-heading"
+  class="remove-member-confirm__heading"
+>Remove {{ data.member.name }}?</h2>
+
+<p
+  id="remove-member-confirm-body"
+  class="remove-member-confirm__body"
+>They will immediately lose access to <strong>{{ data.projectName }}</strong> and any tasks assigned to them will be unassigned.</p>
+
+<div class="remove-member-confirm__actions">
+  <button
+    type="button"
+    class="remove-member-confirm__cancel"
+    (click)="onCancel()"
+  >Cancel</button>
+
+  <button
+    type="button"
+    class="remove-member-confirm__confirm"
+    (click)="onConfirm()"
+  >Remove</button>
+</div>

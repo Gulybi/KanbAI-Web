@@ -1,0 +1,122 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+}
+
+.add-member-form {
+  padding-top: $space-md;
+  border-top: 1px solid $border-light;
+
+  display: flex;
+  flex-direction: column;
+  gap: $space-sm;
+}
+
+.add-member-form__heading {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-secondary;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.add-member-form__error {
+  display: flex;
+  align-items: flex-start;
+  gap: $space-xs;
+  padding: $space-xs $space-sm;
+  background-color: $bg-main;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-high;
+  border-radius: $radius-md;
+  font-size: $font-size-md;
+  line-height: $line-height-normal;
+  color: $text-primary;
+}
+
+.add-member-form__error-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: $status-high;
+  margin-top: 2px;
+}
+
+.add-member-form__error-text {
+  margin: 0;
+}
+
+.add-member-form__row {
+  display: flex;
+  align-items: flex-end;
+  gap: $space-sm;
+
+  @media (max-width: #{$bp-md - 1px}) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.add-member-form__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-member-form__submit {
+  flex-shrink: 0;
+
+  ::ng-deep button {
+    min-height: 44px;
+    min-width: 120px;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: $space-xxs;
+  }
+
+  @media (max-width: #{$bp-md - 1px}) {
+    width: 100%;
+    ::ng-deep button { width: 100%; }
+  }
+}
+
+.add-member-form__submit-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: $space-xxs;
+  border: 2px solid $brand-primary-light;
+  border-top-color: $text-inverse;
+  border-radius: $radius-circle;
+  vertical-align: middle;
+  animation: add-member-form-spin 1s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    border-style: dotted;
+  }
+}
+
+@keyframes add-member-form-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

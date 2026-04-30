@@ -1,0 +1,102 @@
+<div class="members-dialog__header">
+  <h2
+    id="members-dialog-title"
+    class="members-dialog__title"
+  >Members — {{ data.project.name }}</h2>
+
+  <button
+    type="button"
+    class="members-dialog__close"
+    aria-label="Close Members dialog"
+    (click)="onClose()"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  </button>
+</div>
+
+<div class="members-dialog__body">
+  <p class="members-dialog__section-label">Members</p>
+
+  @switch (listVm().status) {
+    @case ('loading') {
+      <p class="members-dialog__status-copy">Loading members…</p>
+    }
+
+    @case ('success') {
+      <app-members-list
+        [members]="$any(listVm()).members"
+        [currentUserId]="currentUserId()"
+        [isOwner]="canManage()"
+        [pendingRemovalUserId]="pendingRemovalUserId()"
+        (removeClick)="onRemoveClick($event)"
+      ></app-members-list>
+    }
+
+    @case ('empty') {
+      <p class="members-dialog__status-copy">No members yet.</p>
+    }
+
+    @case ('error') {
+      <div
+        class="members-dialog__error-banner"
+        role="alert"
+        aria-live="assertive"
+      >
+        <svg
+          class="members-dialog__error-banner-icon"
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <p class="members-dialog__error-banner-text">{{ $any(listVm()).message }}</p>
+        <button
+          type="button"
+          class="members-dialog__error-banner-retry"
+          (click)="onRetryLoad()"
+        >Retry</button>
+      </div>
+    }
+  }
+
+  @if (canManage()) {
+    <app-add-member-form
+      [disabled]="addVm().status === 'submitting'"
+      [errorMessage]="addVm().errorMessage"
+      [resetCounter]="addVm().resetCounter"
+      (submitEmail)="onAddSubmit($event)"
+    ></app-add-member-form>
+  } @else if (listVm().status === 'success' || listVm().status === 'empty') {
+    <p class="members-dialog__viewer-note">Only owners can add or remove members.</p>
+  }
+</div>
+
+<div
+  class="sr-only"
+  aria-live="polite"
+  aria-atomic="true"
+>{{ liveMessage() }}</div>

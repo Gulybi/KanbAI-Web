@@ -1,0 +1,42 @@
+<div
+  class="member-row"
+  [class.member-row--pending]="isPending"
+>
+  <span class="member-row__avatar" aria-hidden="true">{{ initials() }}</span>
+
+  <div class="member-row__identity">
+    <div class="member-row__name-line">
+      <p class="member-row__name" [title]="member.name">{{ member.name }}</p>
+      @if (isSelf) {
+        <span class="member-row__self-indicator">(You)</span>
+      }
+    </div>
+    <p class="member-row__email" [title]="member.email">{{ member.email }}</p>
+  </div>
+
+  <span class="member-row__badge-slot">
+    <span
+      class="project-card__badge"
+      [class.project-card__badge--owner]="roleVariant() === 'owner'"
+      [class.project-card__badge--member]="roleVariant() === 'member'"
+      [class.project-card__badge--default]="roleVariant() === 'default'"
+    >{{ member.role | titlecase }}</span>
+  </span>
+
+  @if (canRemove) {
+    <button
+      type="button"
+      class="member-row__remove"
+      [disabled]="isPending"
+      [attr.aria-label]="'Remove ' + member.name"
+      (click)="onRemove()"
+    >
+      @if (isPending) {
+        <span class="member-row__remove-spinner" aria-hidden="true"></span>
+        <span>Removing…</span>
+      } @else {
+        Remove
+      }
+    </button>
+  }
+</div>

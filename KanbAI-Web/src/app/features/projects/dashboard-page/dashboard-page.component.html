@@ -9,7 +9,10 @@
         <app-dashboard-skeleton></app-dashboard-skeleton>
       }
       @case ('success') {
-        <app-project-grid [projects]="$any(vm()).projects"></app-project-grid>
+        <app-project-grid
+          [projects]="$any(vm()).projects"
+          (manageMembersClick)="openMembersDialog($event)"
+        ></app-project-grid>
       }
       @case ('empty') {
         <app-dashboard-empty-state

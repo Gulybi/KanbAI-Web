@@ -59,14 +59,17 @@ Factories in code: `ApiResponse.Ok(...)`, `ApiResponse<T>.Ok(data, ...)`, `ApiRe
 | `GET` | `/api/project/{id}` | JWT | — | `200` — `ApiResponse<ProjectResponseDto>` / `404` |
 | `PUT` | `/api/project/{id}` | JWT | `UpdateProjectDto` | `200` — `ApiResponse<ProjectResponseDto>` / `404` |
 | `DELETE` | `/api/project/{id}` | JWT | — | `204` / `403` / `404` |
+| `GET` | `/api/project/{projectId}/members` | JWT | — | `200` — `ApiResponse<List<MemberResponseDto>>` / `404` |
 | `POST` | `/api/project/{projectId}/members` | JWT | `AddMemberDto` | `201` — `ApiResponse<MemberResponseDto>` / `400` / `403` / `404` |
 | `DELETE` | `/api/project/{projectId}/members/{userId}` | JWT | — | `204` / `400` / `403` / `404` |
 
 **Delete project:** `403` when caller is not owner; `404` when not found.
 
-**Add member:** `403` — only owner; `400` — user not found or already member; `404` — project not found.
+**List members:** returns `404 "Project not found."` both when the project is missing AND when the caller is not a member. Frontend maps this to "This project no longer exists."
 
-**Remove member:** `403` — only owner; `400` — cannot remove last owner; `404` — not found.
+**Add member:** `403` — only owner; `400` — user not found (`"User not found."` or `"No user found with email address: {email}"` — match by prefix), already member (`"User is already a member of this project."`), or missing input (`"Either UserId or Email is required."` / `"Provide either UserId or Email, not both."`); `404` — project not found.
+
+**Remove member:** `403` — only owner (`"Only the project owner can remove members."`); `400` — cannot remove last owner (`"Cannot remove the last owner from the project."`); `404` — not found (treated as success by the frontend: already gone server-side).
 
 ---
 
@@ -157,9 +160,14 @@ Same shape as `CreateProjectDto`.
 
 ### `AddMemberDto`
 
+Either `userId` or `email` must be supplied, not both. The backend resolves the email to a user internally.
+
 | JSON property | Type | Validation |
 |---------------|------|------------|
-| `userId` | `string` (GUID) | Required |
+| `userId` | `string` (GUID, optional) | Required when `email` is absent |
+| `email` | `string` (optional) | Required when `userId` is absent; validated as email format |
+
+The frontend Members UI (issue #33) sends `{ email }` only.
 
 ### `MemberResponseDto`
 

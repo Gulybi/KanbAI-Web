@@ -1,0 +1,187 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+/* ---------------------------------------------------------------
+   CDK overlay pane chrome — scoped to .members-dialog-panel.
+   Emitted globally because the component uses ViewEncapsulation.None.
+---------------------------------------------------------------- */
+.members-dialog-panel {
+  background-color: $bg-main;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-dropdown;
+  width: calc(100vw - (#{$space-md} * 2));
+  max-width: 560px;
+  padding: $space-md;
+  display: block;
+  animation: members-dialog-enter $motion-base both;
+
+  @include respond-to('md') {
+    padding: $space-lg;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 0.01ms;
+  }
+}
+
+@keyframes members-dialog-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.members-dialog-backdrop {
+  background-color: rgba(11, 11, 11, 0.5);
+  animation: members-dialog-backdrop-fade $motion-fast both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 0.01ms;
+  }
+}
+
+@keyframes members-dialog-backdrop-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------
+   In-component structure (scoped via .members-dialog-panel).
+---------------------------------------------------------------- */
+.members-dialog-panel {
+  app-members-dialog {
+    display: block;
+    font-family: $font-family-base;
+    color: $text-primary;
+  }
+
+  .members-dialog__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: $space-sm;
+    margin-bottom: $space-lg;
+  }
+
+  .members-dialog__title {
+    margin: 0;
+    font-size: $font-size-xl;
+    font-weight: $font-weight-semibold;
+    line-height: $line-height-tight;
+    color: $text-primary;
+    letter-spacing: -0.01em;
+
+    word-break: break-word;
+  }
+
+  .members-dialog__close {
+    appearance: none;
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: $text-secondary;
+    width: 32px;
+    height: 32px;
+    border-radius: $radius-circle;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    transition: background-color $motion-fast, color $motion-fast;
+
+    &:hover { background-color: $bg-sidebar-light; color: $text-primary; }
+    &:focus-visible { outline: 2px solid $brand-primary; outline-offset: 2px; }
+
+    @media (max-width: #{$bp-md - 1px}) {
+      width: 44px;
+      height: 44px;
+    }
+  }
+
+  .members-dialog__body {
+    display: flex;
+    flex-direction: column;
+    gap: $space-md;
+  }
+
+  .members-dialog__section-label {
+    margin: 0;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    color: $text-secondary;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .members-dialog__status-copy {
+    margin: 0;
+    padding: $space-md $space-sm;
+    text-align: center;
+    font-size: $font-size-md;
+    line-height: $line-height-normal;
+    color: $text-secondary;
+  }
+
+  .members-dialog__error-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: $space-xs;
+    padding: $space-xs $space-sm;
+    background-color: $bg-main;
+    border: 1px solid $border-light;
+    border-left: 4px solid $status-high;
+    border-radius: $radius-md;
+    font-size: $font-size-md;
+    line-height: $line-height-normal;
+    color: $text-primary;
+  }
+
+  .members-dialog__error-banner-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: $status-high;
+    margin-top: 2px;
+  }
+
+  .members-dialog__error-banner-text { margin: 0; flex: 1; }
+
+  .members-dialog__error-banner-retry {
+    appearance: none;
+    background-color: transparent;
+    border: 1px solid $border-light;
+    border-radius: $radius-md;
+    color: $text-primary;
+    padding: $space-xxs $space-sm;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    cursor: pointer;
+    transition: background-color $motion-fast, border-color $motion-fast;
+
+    &:hover { background-color: $bg-sidebar-light; }
+    &:focus-visible { outline: 2px solid $brand-primary; outline-offset: 2px; }
+  }
+
+  .members-dialog__viewer-note {
+    margin: 0;
+    font-size: $font-size-sm;
+    color: $text-tertiary;
+    font-style: italic;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}

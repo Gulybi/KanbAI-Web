@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { vi } from 'vitest';
 import { ProjectCardComponent } from './project-card.component';
 import { ProjectSummary } from '../../models/project.model';
 
@@ -129,5 +130,53 @@ describe('ProjectCardComponent', () => {
     expect(text).not.toContain('Z');
     // The mediumDate pipe always outputs the 4-digit year somewhere in the string.
     expect(text).toMatch(/2026/);
+  });
+
+  // ------------------------------------------------------------------
+  // Manage-members icon-button (issue #33)
+  // ------------------------------------------------------------------
+  it('renders the Manage-members icon-button when role is Owner', async () => {
+    const fixture = await mount({ ...base, role: 'Owner' });
+    const btn = fixture.nativeElement.querySelector('.project-card__manage-btn');
+    expect(btn).toBeTruthy();
+  });
+
+  it('does NOT render the Manage-members icon-button when role is Member', async () => {
+    const fixture = await mount({ ...base, role: 'Member' });
+    const btn = fixture.nativeElement.querySelector('.project-card__manage-btn');
+    expect(btn).toBeNull();
+  });
+
+  it('is tolerant of non-canonical role casing ("owner")', async () => {
+    const fixture = await mount({ ...base, role: 'owner' });
+    const btn = fixture.nativeElement.querySelector('.project-card__manage-btn');
+    expect(btn).toBeTruthy();
+  });
+
+  it('includes the project name in the aria-label of the Manage button', async () => {
+    const fixture = await mount({ ...base, role: 'Owner', name: 'Q2 Launch Plan' });
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('.project-card__manage-btn');
+    expect(btn.getAttribute('aria-label')).toBe('Manage members for Q2 Launch Plan');
+  });
+
+  it('emits manageMembersClick with the project when the button is clicked', async () => {
+    const fixture = await mount({ ...base, role: 'Owner' });
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.manageMembersClick.subscribe(p => (emitted = p));
+
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('.project-card__manage-btn');
+    btn.click();
+    expect(emitted).toBeTruthy();
+    expect(emitted!.id).toBe(base.id);
+  });
+
+  it('stops click propagation so the card does not also receive the click', async () => {
+    const fixture = await mount({ ...base, role: 'Owner' });
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('.project-card__manage-btn');
+
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const stopPropagation = vi.spyOn(ev, 'stopPropagation');
+    btn.dispatchEvent(ev);
+    expect(stopPropagation).toHaveBeenCalled();
   });
 });
