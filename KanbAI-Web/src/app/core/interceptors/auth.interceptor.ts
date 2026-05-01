@@ -32,7 +32,15 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      if (error.status === 401) {
+      // A 401 from the auth endpoints themselves means "bad credentials" —
+      // the login/register forms are responsible for surfacing that to the
+      // user. The global logout-on-401 handler is for expired/invalid
+      // tokens on authenticated endpoints only.
+      const isAuthEndpoint =
+        req.url.startsWith(`${environment.apiUrl}/auth/login`) ||
+        req.url.startsWith(`${environment.apiUrl}/auth/register`);
+
+      if (error.status === 401 && !isAuthEndpoint) {
         authService.logout();
         router.navigate(['/login']);
       }

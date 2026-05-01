@@ -59,7 +59,7 @@ describe('Environment Configuration', () => {
     });
 
     it('should have development apiUrl', () => {
-      expect(devEnvironment.apiUrl).toBe('http://localhost:4200/api');
+      expect(devEnvironment.apiUrl).toBe('http://localhost:5257/api');
     });
 
     it('should use HTTP protocol for development', () => {
@@ -146,7 +146,7 @@ describe('Environment Configuration', () => {
       const url = new URL(devEnvironment.apiUrl);
       expect(url.protocol).toBe('http:');
       expect(url.hostname).toBe('localhost');
-      expect(url.port).toBe('4200');
+      expect(url.port).toBe('5257');
       expect(url.pathname).toBe('/api');
     });
 
@@ -175,7 +175,7 @@ describe('Environment Configuration', () => {
 
     it('AC: environment.development.ts exists with production: false and apiUrl', () => {
       expect(devEnvironment.production).toBe(false);
-      expect(devEnvironment.apiUrl).toBe('http://localhost:4200/api');
+      expect(devEnvironment.apiUrl).toBe('http://localhost:5257/api');
     });
 
     it('AC: Both files export an object named environment', () => {
@@ -225,18 +225,18 @@ describe('Environment Configuration', () => {
       const endpoint = '/users';
       const fullUrl = `${devEnvironment.apiUrl}${endpoint}`;
 
-      expect(fullUrl).toBe('http://localhost:4200/api/users');
+      expect(fullUrl).toBe('http://localhost:5257/api/users');
     });
 
     it('should be usable in URL construction', () => {
       const endpoint = 'users';
       const fullUrl = `${devEnvironment.apiUrl}/${endpoint}`;
 
-      expect(fullUrl).toBe('http://localhost:4200/api/users');
+      expect(fullUrl).toBe('http://localhost:5257/api/users');
     });
 
     it('should work with startsWith for URL matching', () => {
-      const testUrl = 'http://localhost:4200/api/users';
+      const testUrl = 'http://localhost:5257/api/users';
       expect(testUrl.startsWith(devEnvironment.apiUrl)).toBe(true);
 
       const prodTestUrl = 'https://api.kanbai.com/users';
