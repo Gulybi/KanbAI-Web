@@ -12,6 +12,12 @@
 export const AUTH_HOME_ROUTE = '/dashboard';
 
 /**
+ * The public landing page shown to anonymous visitors.
+ * Navbar brand click target when `isAuthenticated()` is false.
+ */
+export const PUBLIC_HOME_ROUTE = '/';
+
+/**
  * Canonical path to the login page. Used by `authGuard` when redirecting
  * unauthenticated users and by `isSafeReturnUrl` to block redirect loops.
  */
