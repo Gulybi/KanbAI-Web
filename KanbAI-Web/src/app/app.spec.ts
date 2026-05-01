@@ -1,11 +1,22 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { App } from './app';
 
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
+      providers: [
+        // The navbar now uses RouterLink, which requires the router to
+        // be provided. A minimal empty route table is sufficient for
+        // these shell-layout assertions.
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting()
+      ]
     }).compileComponents();
   });
 
@@ -20,9 +31,10 @@ describe('App', () => {
   describe('Shell Layout', () => {
     it('should render navbar with application title', async () => {
       const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
       await fixture.whenStable();
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('app-navbar h1')?.textContent).toContain('KanbAI');
+      expect(compiled.querySelector('app-navbar .navbar__brand')?.textContent).toContain('KanbAI');
     });
 
     it('should apply shell layout flex structure', () => {

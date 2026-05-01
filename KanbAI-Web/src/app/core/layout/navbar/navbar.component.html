@@ -1,10 +1,15 @@
 <nav class="navbar">
-  <h1 class="navbar__brand">KanbAI</h1>
+  <a
+    class="navbar__brand"
+    [routerLink]="brandTargetRoute()"
+    aria-label="KanbAI — home">
+    KanbAI
+  </a>
 
-  @if (currentUser(); as user) {
+  @if (isAuthenticated()) {
     <div class="navbar__auth-cluster" role="group" aria-label="Account">
       <span class="navbar__user-name" data-testid="navbar-user-name">
-        {{ user.name }}
+        {{ currentUser()?.name }}
       </span>
       <button
         type="button"
@@ -12,6 +17,11 @@
         (click)="onLogout()">
         Logout
       </button>
+    </div>
+  } @else {
+    <div class="navbar__auth-cluster" role="group" aria-label="Authentication">
+      <a routerLink="/login" class="navbar__login-btn">Login</a>
+      <a routerLink="/register" class="navbar__register-btn">Register</a>
     </div>
   }
 </nav>

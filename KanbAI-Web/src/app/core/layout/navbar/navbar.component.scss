@@ -13,7 +13,7 @@
 
 .navbar {
   width: 100%;
-  height: 64px;                       // compact on phones
+  height: 64px;
   padding: 0 $space-md;
   background-color: $bg-sidebar-dark;
   color: $text-inverse;
@@ -23,15 +23,19 @@
   box-shadow: $shadow-card;
 
   @include respond-to('md') {
-    height: $topbar-height;            // 80px tablet+
+    height: $topbar-height;
     gap: $space-lg;
   }
 
   @include respond-to('lg') {
-    padding: 0 $content-padding;       // 32px desktop
+    padding: 0 $content-padding;
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Brand — anchor styled to preserve the previous <h1> typography.
+// Semantic change only: <h1> → <a>.
+// ─────────────────────────────────────────────────────────────
 .navbar__brand {
   margin: 0;
   font-family: $font-family-base;
@@ -41,16 +45,47 @@
   color: $text-inverse;
   letter-spacing: -0.01em;
   user-select: none;
+
+  // Anchor resets.
+  text-decoration: none;
+  cursor: pointer;
+
+  transition: opacity $motion-fast;
+
+  &:visited {
+    color: $text-inverse;
+  }
+
+  &:hover {
+    opacity: 0.88;
+  }
+
+  &:active {
+    opacity: 0.72;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    border-radius: 2px;              // tight radius so the ring hugs the wordmark
+  }
+
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Auth cluster — shared container for anonymous + authenticated
+// branches. The @if/@else in the template guarantees only one
+// renders at a time.
+// ─────────────────────────────────────────────────────────────
 .navbar__auth-cluster {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: $space-sm;
 
-  // Quiet entrance — render in place, just fade opacity so the appearance
-  // isn't jarring. No transform, no layout shift.
   animation: navbar-auth-cluster-in $motion-fast;
 }
 
@@ -70,28 +105,28 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 
-  @include respond-to('md') {
-    max-width: 20ch;
-  }
-
-  @include respond-to('lg') {
-    max-width: none;
-  }
+  @include respond-to('md') { max-width: 20ch; }
+  @include respond-to('lg') { max-width: none; }
 }
 
-.navbar__logout-btn {
-  // Reset
+// ─────────────────────────────────────────────────────────────
+// Shared action-button base. Not a class — a placeholder — so
+// the template stays clean and every action control inherits
+// the same reset, touch target, focus ring, and transitions.
+// ─────────────────────────────────────────────────────────────
+%navbar-action-btn {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid transparent;
   background-color: transparent;
   color: $text-inverse;
   font-family: inherit;
   font-size: $font-size-md;
   font-weight: $font-weight-medium;
   line-height: $line-height-normal;
+  text-decoration: none;              // for <a> variants (Login / Register)
 
   padding: $space-xs $space-md;
-  min-height: 44px;                    // touch target
+  min-height: 44px;                   // touch target, all breakpoints
   border-radius: $radius-md;
   cursor: pointer;
 
@@ -102,7 +137,36 @@
   transition:
     background-color $motion-fast,
     border-color $motion-fast,
-    color $motion-fast;
+    color $motion-fast,
+    opacity $motion-fast;
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  &[disabled],
+  &:disabled,
+  &[aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: #{$bp-sm - 1px}) {
+    padding: $space-xs $space-sm;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Ghost variant — Logout (authenticated) + Login (anonymous).
+// Visually identical: translucent white border on dark rail.
+// ─────────────────────────────────────────────────────────────
+%navbar-action-btn--ghost {
+  border-color: rgba(255, 255, 255, 0.24);
 
   &:hover {
     background-color: rgba(255, 255, 255, 0.08);
@@ -112,36 +176,37 @@
   &:active {
     background-color: rgba(255, 255, 255, 0.14);
   }
-
-  // WCAG 2.4.7 — visible focus indicator.
-  // Sage outline on a dark surface reads crisply and matches the focus
-  // treatment used across the design system.
-  &:focus-visible {
-    outline: 2px solid $brand-primary;
-    outline-offset: 2px;
-  }
-
-  // Suppress the default focus ring when focus was triggered by click,
-  // but keep :focus-visible intact for keyboard users.
-  &:focus:not(:focus-visible) {
-    outline: none;
-  }
-
-  // Documented-but-inert. logout() is synchronous; future async variants
-  // (e.g., server-side session revocation) would toggle [disabled].
-  &[disabled],
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  // Collapse paddings on very narrow viewports while keeping the 44px
-  // touch target via min-height.
-  @media (max-width: #{$bp-sm - 1px}) {
-    padding: $space-xs $space-sm;
-  }
 }
 
-// prefers-reduced-motion is already honored globally in _motion.scss,
-// which clamps all animation-duration / transition-duration to 0.01ms.
-// No component-level override needed.
+// Logout — unchanged behavior from #28, refactored to extend
+// the placeholders above. No visual diff.
+.navbar__logout-btn {
+  @extend %navbar-action-btn;
+  @extend %navbar-action-btn--ghost;
+}
+
+// Login — ghost, matches Logout treatment.
+.navbar__login-btn {
+  @extend %navbar-action-btn;
+  @extend %navbar-action-btn--ghost;
+}
+
+// Register — solid primary CTA.
+.navbar__register-btn {
+  @extend %navbar-action-btn;
+  background-color: $brand-primary;
+  border-color: $brand-primary;
+  color: $text-inverse;
+
+  &:hover {
+    background-color: $brand-primary-hover;
+    border-color: $brand-primary-hover;
+  }
+
+  &:active {
+    // Subtle press: hover colour + inset darken to read as a press
+    // on the solid fill. Keeps contrast ≥ 3:1 vs the label.
+    background-color: $brand-primary-hover;
+    box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.08);
+  }
+}
