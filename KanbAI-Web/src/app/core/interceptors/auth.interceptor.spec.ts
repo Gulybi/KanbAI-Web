@@ -4,6 +4,8 @@ import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common
 import { Router } from '@angular/router';
 import { vi } from 'vitest';
 import { authInterceptor } from './auth.interceptor';
+import { AuthService } from '../services/AuthService';
+import { environment } from '../../../environments/environment';
 
 describe('authInterceptor', () => {
   let httpClient: HttpClient;
@@ -46,7 +48,9 @@ describe('authInterceptor', () => {
         // `router.navigate(['/login'])`. Without a stub, the default
         // router rejects with NG04002 ("Cannot match any routes") because
         // no routes are registered in this test bed.
-        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } }
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // The interceptor calls `authService.logout()` on non-exempt 401s.
+        { provide: AuthService, useValue: { logout: vi.fn() } }
       ]
     });
 
@@ -354,6 +358,68 @@ describe('authInterceptor', () => {
 
       httpClient.delete(`${apiUrl}/delete`).subscribe();
       httpTesting.expectOne(`${apiUrl}/delete`).flush({ method: 'DELETE' });
+    });
+  });
+
+  describe('Auth-endpoint 401 exemption', () => {
+    it('does not call logout or navigate when a 401 comes from /auth/login', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      httpClient.post(`${environment.apiUrl}/auth/login`, { email: 'x', password: 'y' }).subscribe({
+        next: () => {
+          throw new Error('should have failed with 401');
+        },
+        error: (error) => {
+          expect(error.status).toBe(401);
+        }
+      });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/auth/login`);
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      expect(authService.logout).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('does not call logout or navigate when a 401 comes from /auth/register', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      httpClient.post(`${environment.apiUrl}/auth/register`, { email: 'x', password: 'y', name: 'z' }).subscribe({
+        next: () => {
+          throw new Error('should have failed with 401');
+        },
+        error: (error) => {
+          expect(error.status).toBe(401);
+        }
+      });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/auth/register`);
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      expect(authService.logout).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('still calls logout and navigates to /login when a 401 comes from a non-auth endpoint', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      httpClient.get(`${environment.apiUrl}/project`).subscribe({
+        next: () => {
+          throw new Error('should have failed with 401');
+        },
+        error: (error) => {
+          expect(error.status).toBe(401);
+        }
+      });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/project`);
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      expect(authService.logout).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledWith(['/login']);
     });
   });
 });
