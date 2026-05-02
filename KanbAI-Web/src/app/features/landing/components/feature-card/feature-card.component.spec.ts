@@ -73,6 +73,10 @@ describe('FeatureCardComponent', () => {
       expect(component.getIconSymbol('automation')).toBe('⚡');
     });
 
+    it('should return correct icon for "lock"', () => {
+      expect(component.getIconSymbol('lock')).toBe('🔒');
+    });
+
     it('should return default icon for unknown type', () => {
       expect(component.getIconSymbol('unknown')).toBe('✨');
     });
@@ -155,6 +159,39 @@ describe('FeatureCardComponent', () => {
     it('should have aria-hidden on decorative icon', () => {
       const iconSpan = fixture.debugElement.query(By.css('.icon-board span'));
       expect(iconSpan.nativeElement.getAttribute('aria-hidden')).toBe('true');
+    });
+  });
+
+  describe('Coming Soon Badge', () => {
+    it('should not render coming-soon badge when feature.comingSoon is undefined', () => {
+      const badge = fixture.debugElement.query(By.css('.feature-card__badge'));
+      expect(badge).toBeFalsy();
+    });
+
+    it('should not render coming-soon badge when feature.comingSoon is false', () => {
+      fixture.componentRef.setInput('feature', { ...mockFeature, comingSoon: false });
+      fixture.detectChanges();
+
+      const badge = fixture.debugElement.query(By.css('.feature-card__badge'));
+      expect(badge).toBeFalsy();
+    });
+
+    it('should render coming-soon badge when feature.comingSoon is true', () => {
+      fixture.componentRef.setInput('feature', { ...mockFeature, comingSoon: true });
+      fixture.detectChanges();
+
+      const badge = fixture.debugElement.query(By.css('.feature-card__badge'));
+      expect(badge).toBeTruthy();
+      expect(badge.nativeElement.textContent.trim()).toBe('Coming soon');
+    });
+
+    it('should have aria-label "Coming soon" on the badge', () => {
+      fixture.componentRef.setInput('feature', { ...mockFeature, comingSoon: true });
+      fixture.detectChanges();
+
+      const badge = fixture.debugElement.query(By.css('.feature-card__badge'));
+      expect(badge.nativeElement.getAttribute('aria-label')).toBe('Coming soon');
+      expect(badge.nativeElement.getAttribute('role')).toBe('status');
     });
   });
 });

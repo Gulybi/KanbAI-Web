@@ -41,10 +41,10 @@ describe('LandingPageComponent', () => {
       const features = component.features();
       const ids = features.map(f => f.id);
 
-      expect(ids).toContain('realtime-kanban');
-      expect(ids).toContain('ai-insights');
-      expect(ids).toContain('team-collaboration');
-      expect(ids).toContain('smart-automation');
+      expect(ids).toContain('project-dashboard');
+      expect(ids).toContain('team-members');
+      expect(ids).toContain('secure-sign-in');
+      expect(ids).toContain('ai-assistance');
     });
 
     it('should have all required feature properties', () => {

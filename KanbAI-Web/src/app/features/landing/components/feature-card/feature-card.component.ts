@@ -18,7 +18,8 @@ export class FeatureCardComponent {
       'board': '📊',
       'ai': '🤖',
       'team': '👥',
-      'automation': '⚡'
+      'automation': '⚡',
+      'lock': '🔒'
     };
     return iconMap[icon] || '✨';
   }

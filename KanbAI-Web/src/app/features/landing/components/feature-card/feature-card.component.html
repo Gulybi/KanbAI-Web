@@ -11,6 +11,15 @@
     </div>
   </div>
 
+  <!-- Coming Soon Badge -->
+  @if (feature.comingSoon) {
+    <span class="feature-card__badge"
+          role="status"
+          aria-label="Coming soon">
+      Coming soon
+    </span>
+  }
+
   <!-- Feature Title -->
   <h3 class="text-xl font-semibold text-gray-900 mb-3">
     {{ feature.title }}

@@ -33,7 +33,7 @@ describe('HeroSectionComponent', () => {
     it('should display main headline', () => {
       const headlines = fixture.debugElement.queryAll(By.css('h2'));
       const mainHeadline = headlines.find(h =>
-        h.nativeElement.textContent.includes('AI-Powered Kanban Boards')
+        h.nativeElement.textContent.includes('Kanban Boards for Modern Teams')
       );
       expect(mainHeadline).toBeTruthy();
     });
@@ -41,14 +41,11 @@ describe('HeroSectionComponent', () => {
     it('should display subheading', () => {
       const subheading = fixture.debugElement.query(By.css('p'));
       expect(subheading).toBeTruthy();
-      expect(subheading.nativeElement.textContent).toContain('Streamline your workflow');
+      expect(subheading.nativeElement.textContent).toContain('lightweight project-management');
     });
 
-    it('should display trust indicator', () => {
-      const trustIndicator = fixture.debugElement.queryAll(By.css('p')).find(p =>
-        p.nativeElement.textContent.includes('No credit card required')
-      );
-      expect(trustIndicator).toBeTruthy();
+    it('should not display the legacy trust indicator line', () => {
+      expect(fixture.nativeElement.textContent).not.toContain('No credit card required');
     });
   });
 

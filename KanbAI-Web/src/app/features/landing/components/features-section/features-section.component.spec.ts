@@ -62,13 +62,13 @@ describe('FeaturesSectionComponent', () => {
     it('should render section header', () => {
       const heading = fixture.debugElement.query(By.css('h2'));
       expect(heading).toBeTruthy();
-      expect(heading.nativeElement.textContent).toContain('Why Choose KanbAI?');
+      expect(heading.nativeElement.textContent).toContain('What KanbAI offers today');
     });
 
     it('should render section description', () => {
       const description = fixture.debugElement.query(By.css('p'));
       expect(description).toBeTruthy();
-      expect(description.nativeElement.textContent).toContain('Powerful features');
+      expect(description.nativeElement.textContent).toContain('A focused set of features');
     });
   });
 
