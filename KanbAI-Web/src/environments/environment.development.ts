@@ -11,5 +11,6 @@ import { Environment } from '../app/core/models/environment.interface';
  */
 export const environment: Environment = {
   production: false,
-  apiUrl: 'http://localhost:5257/api'
+  apiUrl: 'http://localhost:5257/api',
+  hubUrl: 'http://localhost:5257/hubs/kanban'
 };
