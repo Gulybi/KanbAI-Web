@@ -236,6 +236,37 @@ describe('DashboardPageComponent', () => {
     );
   });
 
+  it('renders empty-state block after an empty-array load', async () => {
+    // Regression guard for issue #57: drives the mock signals in the exact
+    // order `ProjectStateService.loadProjects()` does and asserts the vm()
+    // computation arrives at the 'empty' branch. If the root-cause bug
+    // (short-circuit on currentUser() === null) were reintroduced,
+    // hasLoaded would stay false and the skeleton would persist instead.
+    const { fixture, mock } = await mount();
+
+    // Phase 1: loadProjects() just fired - isLoading=true, hasLoaded=false.
+    mock.isLoading.set(true);
+    mock.hasLoaded.set(false);
+    mock.projects.set([]);
+    mock.error.set(null);
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.directive(DashboardSkeletonComponent))).toBeTruthy();
+
+    // Phase 2: empty-array response landed - setState({ projects: [],
+    // isLoading: false, error: null, hasLoaded: true }).
+    mock.projects.set([]);
+    mock.isLoading.set(false);
+    mock.error.set(null);
+    mock.hasLoaded.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.directive(DashboardEmptyStateComponent))).toBeTruthy();
+    expect(fixture.debugElement.query(By.directive(DashboardSkeletonComponent))).toBeNull();
+    expect(fixture.debugElement.query(By.directive(ProjectGridComponent))).toBeNull();
+    expect(fixture.debugElement.query(By.directive(DashboardErrorStateComponent))).toBeNull();
+  });
+
   it('re-renders reactively when the state service signals change after initial mount', async () => {
     const { fixture, mock } = await mount();
 

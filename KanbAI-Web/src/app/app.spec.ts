@@ -53,12 +53,16 @@ describe('App', () => {
       expect(navbar).toBeTruthy();
     });
 
-    it('should render sidebar component', () => {
+    it('should NOT render a sidebar in the shell', () => {
+      // Regression guard for issue #57: the SidebarComponent was removed
+      // from the application shell because it rendered only a placeholder.
+      // Any future reintroduction must be an explicit product decision, not
+      // an accidental re-wiring.
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
 
       const sidebar = fixture.debugElement.query(By.css('app-sidebar'));
-      expect(sidebar).toBeTruthy();
+      expect(sidebar).toBeNull();
     });
 
     it('should apply main content area styling', () => {

@@ -119,6 +119,58 @@ describe('ProjectStateService', () => {
       );
     });
 
+    it('writes hasLoaded=true on empty-array success', () => {
+      // Regression guard for issue #57: a freshly-signed-up user with zero
+      // projects must reach the dashboard's empty-state branch, which
+      // requires hasLoaded() === true AND projects() === [].
+      service.loadProjects();
+      expect(service.isLoading()).toBe(true);
+
+      const req = httpMock.expectOne(LIST_URL);
+      req.flush({
+        success: true,
+        message: null,
+        errors: [],
+        data: []
+      } satisfies ApiResponse<ProjectSummary[]>);
+
+      expect(service.projects()).toEqual([]);
+      expect(service.isLoading()).toBe(false);
+      expect(service.hasLoaded()).toBe(true);
+      expect(service.error()).toBeNull();
+    });
+
+    it('writes hasLoaded=true on empty-array success even when currentUser is null at response time', () => {
+      // Explicit regression guard for the removed short-circuit: previously,
+      // if currentUser() was null when the response landed, the next
+      // callback early-returned and left hasLoaded=false forever. Now the
+      // only cancellation path is reset() via unsubscribe() — so a response
+      // that actually fires must always populate the cache.
+      service.loadProjects();
+      const req = httpMock.expectOne(LIST_URL);
+
+      // Null currentUser WITHOUT triggering effects/reset. This simulates
+      // the "authenticated shell boots without hydrating currentUser"
+      // scenario described in the tech spec's root-cause diagnosis.
+      currentUserSig.set(null);
+      // Note: we deliberately do NOT call TestBed.flushEffects() here,
+      // because doing so would invoke reset() and unsubscribe the request.
+      // The scenario we're guarding against is currentUser being null
+      // without a logout having occurred.
+
+      req.flush({
+        success: true,
+        message: null,
+        errors: [],
+        data: []
+      } satisfies ApiResponse<ProjectSummary[]>);
+
+      expect(service.projects()).toEqual([]);
+      expect(service.hasLoaded()).toBe(true);
+      expect(service.isLoading()).toBe(false);
+      expect(service.error()).toBeNull();
+    });
+
     it('de-duplicates two synchronous calls into a single HTTP request', () => {
       service.loadProjects();
       service.loadProjects();
@@ -514,25 +566,70 @@ describe('ProjectStateService', () => {
     });
 
     it('does not repopulate the cache if a list response arrives after logout', () => {
+      // First, perform a successful load so hasLoaded=true. The logout-reset
+      // effect only fires when hasLoaded is true (it guards against a
+      // spurious reset on the initial unauthenticated boot).
       service.loadProjects();
-      const req = httpMock.expectOne(LIST_URL);
-
-      // Simulate logout while the request is still in flight.
-      currentUserSig.set(null);
-      TestBed.flushEffects();
-
-      // The late response arrives. The service's `reset()` unsubscribed the
-      // in-flight subscription, so `next` should not fire. Even if it did,
-      // the guard (`currentUser() === null`) prevents cache repopulation.
-      req.flush({
+      httpMock.expectOne(LIST_URL).flush({
         success: true,
         message: null,
         errors: [],
-        data: [makeProjectSummary({ id: 'p-late' })]
+        data: [makeProjectSummary({ id: 'p-existing' })]
       } satisfies ApiResponse<ProjectSummary[]>);
+      expect(service.hasLoaded()).toBe(true);
+
+      // Start a refresh; the second request is now in flight.
+      service.loadProjects();
+      const req = httpMock.expectOne(LIST_URL);
+
+      // Simulate logout while the refresh is still in flight. The effect()
+      // observes currentUser flipping to null AND hasLoaded=true, so it
+      // invokes reset() which unsubscribes the in-flight subscription and
+      // replaces state with INITIAL_PROJECT_STATE.
+      currentUserSig.set(null);
+      TestBed.flushEffects();
+
+      // The TestRequest is now cancelled (Angular's HttpTestingController
+      // throws if we try to flush a cancelled request, which is itself
+      // evidence that unsubscribe() propagated correctly).
+      expect(req.cancelled).toBe(true);
 
       expect(service.projects()).toEqual([]);
       expect(service.hasLoaded()).toBe(false);
+    });
+
+    it('logout mid-fetch prevents cache repopulation (regression guard for the reset() path)', () => {
+      // Belt-and-suspenders version of the above test: the reset() path via
+      // unsubscribe() is the sole mechanism protecting against a stale
+      // response landing after logout. If that mechanism ever regresses,
+      // this assertion will catch it.
+      service.loadProjects();
+      httpMock.expectOne(LIST_URL).flush({
+        success: true,
+        message: null,
+        errors: [],
+        data: [makeProjectSummary({ id: 'p-existing' })]
+      } satisfies ApiResponse<ProjectSummary[]>);
+      expect(service.hasLoaded()).toBe(true);
+
+      // Trigger a refresh so another subscription is in flight.
+      service.loadProjects();
+      const req = httpMock.expectOne(LIST_URL);
+
+      // Logout: currentUser flips to null, the effect() observes it (with
+      // hasLoaded still true) and invokes reset() which unsubscribes the
+      // in-flight subscription and replaces state with INITIAL_PROJECT_STATE.
+      currentUserSig.set(null);
+      TestBed.flushEffects();
+
+      // unsubscribe() propagated correctly: the underlying TestRequest is
+      // cancelled. Angular's HttpTestingController considers this the
+      // authoritative signal that `next` cannot fire.
+      expect(req.cancelled).toBe(true);
+
+      expect(service.projects()).toEqual([]);
+      expect(service.hasLoaded()).toBe(false);
+      expect(service.isLoading()).toBe(false);
     });
 
     it('does not fire a reset on initial unauthenticated state', () => {
