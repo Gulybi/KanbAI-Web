@@ -2,14 +2,8 @@
   <!-- Navbar (full width at top) -->
   <app-navbar />
 
-  <!-- Main content area: Sidebar + Router Outlet -->
-  <div class="flex flex-1 overflow-hidden">
-    <!-- Sidebar (fixed width on left) -->
-    <app-sidebar />
-
-    <!-- Content area (takes remaining width) -->
-    <main class="flex-1 overflow-y-auto bg-gray-50">
-      <router-outlet />
-    </main>
-  </div>
+  <!-- Content area (fills remaining vertical space) -->
+  <main class="flex-1 overflow-y-auto bg-gray-50">
+    <router-outlet />
+  </main>
 </div>

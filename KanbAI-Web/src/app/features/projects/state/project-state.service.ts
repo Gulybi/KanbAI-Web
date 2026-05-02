@@ -90,13 +90,11 @@ export class ProjectStateService extends BaseStateService<ProjectState> {
     this.setState({ isLoading: true, error: null });
 
     this.inFlightLoad = this.projectsApi.listProjects().subscribe({
+      // Cancellation of a mid-flight fetch on logout is handled by
+      // `reset()` via `inFlightLoad.unsubscribe()`, so these callbacks do
+      // not need to re-check `currentUser()` before writing to state.
       next: projects => {
         this.inFlightLoad = null;
-        // Guard against a response arriving after logout cleared the cache
-        // and reset `hasLoaded` — do NOT repopulate in that case.
-        if (this.authService.currentUser() === null) {
-          return;
-        }
         this.setState({
           projects,
           isLoading: false,
@@ -106,9 +104,6 @@ export class ProjectStateService extends BaseStateService<ProjectState> {
       },
       error: err => {
         this.inFlightLoad = null;
-        if (this.authService.currentUser() === null) {
-          return;
-        }
         this.setState({
           isLoading: false,
           error: mapErrorToUserMessage(err, 'list')
