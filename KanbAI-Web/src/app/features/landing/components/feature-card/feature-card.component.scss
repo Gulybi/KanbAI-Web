@@ -1,3 +1,9 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+
 // Custom hover effect for card elevation
 .feature-card {
   transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
@@ -23,4 +29,31 @@
 
 .icon-automation {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+// Semantic icon for the "Secure Sign-in" card — $status-medium (trust blue)
+.icon-lock {
+  background: linear-gradient(135deg, $status-medium 0%, #3B5A87 100%);
+}
+
+// "Coming soon" roadmap badge
+.feature-card__badge {
+  display: inline-block;
+  margin-top: $space-sm;
+  margin-bottom: $space-xs;
+  padding: $space-xxs $space-xs;
+  background-color: $brand-primary-light;
+  color: $text-primary;
+  font-family: $font-family-base;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  letter-spacing: 0.02em;
+  border-radius: $radius-sm;
+  transition: outline-color $motion-fast;
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
 }

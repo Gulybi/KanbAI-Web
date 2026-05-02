@@ -18,28 +18,29 @@ export class LandingPageComponent {
 
   features = signal<FeatureHighlight[]>([
     {
-      id: 'realtime-kanban',
-      title: 'Real-time Kanban Boards',
-      description: 'Collaborate seamlessly with your team on dynamic boards that update instantly across all devices.',
+      id: 'project-dashboard',
+      title: 'Project Dashboard',
+      description: 'See all your projects in one place. Create new projects and open existing ones from a single overview.',
       icon: 'board'
     },
     {
-      id: 'ai-insights',
-      title: 'AI-Driven Insights',
-      description: 'Leverage machine learning to identify bottlenecks, predict sprint velocity, and optimize workflows.',
-      icon: 'ai'
-    },
-    {
-      id: 'team-collaboration',
-      title: 'Team Collaboration',
-      description: 'Built-in chat, mentions, and notifications keep your team aligned and productive.',
+      id: 'team-members',
+      title: 'Team Members',
+      description: 'Invite teammates to a project and manage who has access to it.',
       icon: 'team'
     },
     {
-      id: 'smart-automation',
-      title: 'Smart Automation',
-      description: 'Automate repetitive tasks with intelligent rules that adapt to your workflow patterns.',
-      icon: 'automation'
+      id: 'secure-sign-in',
+      title: 'Secure Sign-in',
+      description: 'Email and password authentication keeps your projects behind a login.',
+      icon: 'lock'
+    },
+    {
+      id: 'ai-assistance',
+      title: 'AI Assistance',
+      description: 'AI-powered suggestions for planning your work are on the roadmap.',
+      icon: 'ai',
+      comingSoon: true
     }
   ]);
 
