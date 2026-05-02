@@ -12,5 +12,6 @@ import { Environment } from '../app/core/models/environment.interface';
  */
 export const environment: Environment = {
   production: true,
-  apiUrl: 'https://api.kanbai.com'
+  apiUrl: 'https://api.kanbai.com',
+  hubUrl: 'https://api.kanbai.com/hubs/kanban'
 };

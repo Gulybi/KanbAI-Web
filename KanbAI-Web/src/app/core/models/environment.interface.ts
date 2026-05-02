@@ -23,4 +23,17 @@ export interface Environment {
    * - Production: 'https://api.kanbai.com'
    */
   apiUrl: string;
+
+  /**
+   * Full URL of the backend SignalR hub endpoint.
+   *
+   * Used by the SignalR client to open the real-time connection. Defined as
+   * an explicit field (not derived from apiUrl) so the hub can live on a
+   * different host/path than the REST API without code changes.
+   *
+   * Examples:
+   * - Development: 'http://localhost:5257/hubs/kanban'
+   * - Production: 'https://api.kanbai.com/hubs/kanban'
+   */
+  hubUrl: string;
 }

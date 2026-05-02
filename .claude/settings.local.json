@@ -27,7 +27,8 @@
       "Bash(git -C c:/temp/KanbAI-Web show --stat 4a89615)",
       "Bash(git -C c:/temp/KanbAI-Web show 4a89615 -- KanbAI-Web/src/app/core/services/AuthService.ts)",
       "Bash(git -C c:/temp/KanbAI-Web show 4a89615 -- KanbAI-Web/src/app/core/services/AuthService.spec.ts)",
-      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('angular.json', 'utf8'\\)\\); console.log\\('valid JSON'\\)\")"
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('angular.json', 'utf8'\\)\\); console.log\\('valid JSON'\\)\")",
+      "Read(//c/c/temp/KanbAI-Web/**)"
     ],
     "additionalDirectories": [
       "C:\\temp\\KanbAI-Web\\docs\\handoffs",

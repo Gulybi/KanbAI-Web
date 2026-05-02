@@ -31,6 +31,7 @@ describe('Environment Configuration', () => {
       const env: Environment = prodEnvironment;
       expect(env.production).toBeDefined();
       expect(env.apiUrl).toBeDefined();
+      expect(env.hubUrl).toBeDefined();
     });
 
     it('should not have trailing slash in apiUrl', () => {
@@ -39,6 +40,28 @@ describe('Environment Configuration', () => {
 
     it('should be a valid URL format', () => {
       expect(() => new URL(prodEnvironment.apiUrl)).not.toThrow();
+    });
+
+    it('should have a valid hubUrl', () => {
+      expect(prodEnvironment.hubUrl).toBeDefined();
+      expect(typeof prodEnvironment.hubUrl).toBe('string');
+      expect(prodEnvironment.hubUrl.length).toBeGreaterThan(0);
+    });
+
+    it('should have production hubUrl', () => {
+      expect(prodEnvironment.hubUrl).toBe('https://api.kanbai.com/hubs/kanban');
+    });
+
+    it('should use HTTPS protocol for production hubUrl', () => {
+      expect(prodEnvironment.hubUrl).toMatch(/^https:\/\//);
+    });
+
+    it('should not have trailing slash in hubUrl', () => {
+      expect(prodEnvironment.hubUrl).not.toMatch(/\/$/);
+    });
+
+    it('should have a valid hubUrl format', () => {
+      expect(() => new URL(prodEnvironment.hubUrl)).not.toThrow();
     });
   });
 
@@ -74,6 +97,7 @@ describe('Environment Configuration', () => {
       const env: Environment = devEnvironment;
       expect(env.production).toBeDefined();
       expect(env.apiUrl).toBeDefined();
+      expect(env.hubUrl).toBeDefined();
     });
 
     it('should not have trailing slash in apiUrl', () => {
@@ -82,6 +106,32 @@ describe('Environment Configuration', () => {
 
     it('should be a valid URL format', () => {
       expect(() => new URL(devEnvironment.apiUrl)).not.toThrow();
+    });
+
+    it('should have a valid hubUrl', () => {
+      expect(devEnvironment.hubUrl).toBeDefined();
+      expect(typeof devEnvironment.hubUrl).toBe('string');
+      expect(devEnvironment.hubUrl.length).toBeGreaterThan(0);
+    });
+
+    it('should have development hubUrl', () => {
+      expect(devEnvironment.hubUrl).toBe('http://localhost:5257/hubs/kanban');
+    });
+
+    it('should use HTTP protocol for development hubUrl', () => {
+      expect(devEnvironment.hubUrl).toMatch(/^http:\/\//);
+    });
+
+    it('should point hubUrl to localhost', () => {
+      expect(devEnvironment.hubUrl).toContain('localhost');
+    });
+
+    it('should not have trailing slash in hubUrl', () => {
+      expect(devEnvironment.hubUrl).not.toMatch(/\/$/);
+    });
+
+    it('should have a valid hubUrl format', () => {
+      expect(() => new URL(devEnvironment.hubUrl)).not.toThrow();
     });
   });
 
@@ -101,19 +151,24 @@ describe('Environment Configuration', () => {
       expect(prodEnvironment.apiUrl).not.toBe(devEnvironment.apiUrl);
     });
 
+    it('should have different hubUrls', () => {
+      expect(prodEnvironment.hubUrl).not.toBe(devEnvironment.hubUrl);
+    });
+
     it('should both implement the same interface', () => {
       const checkInterface = (env: Environment) => {
         expect(typeof env.production).toBe('boolean');
         expect(typeof env.apiUrl).toBe('string');
+        expect(typeof env.hubUrl).toBe('string');
       };
 
       checkInterface(prodEnvironment);
       checkInterface(devEnvironment);
     });
 
-    it('should have exactly two properties', () => {
-      expect(Object.keys(prodEnvironment).length).toBe(2);
-      expect(Object.keys(devEnvironment).length).toBe(2);
+    it('should have exactly three properties', () => {
+      expect(Object.keys(prodEnvironment).length).toBe(3);
+      expect(Object.keys(devEnvironment).length).toBe(3);
     });
   });
 
@@ -132,6 +187,14 @@ describe('Environment Configuration', () => {
 
     it('apiUrl should be a string in development environment', () => {
       expect(typeof devEnvironment.apiUrl).toBe('string');
+    });
+
+    it('hubUrl should be a string in production environment', () => {
+      expect(typeof prodEnvironment.hubUrl).toBe('string');
+    });
+
+    it('hubUrl should be a string in development environment', () => {
+      expect(typeof devEnvironment.hubUrl).toBe('string');
     });
   });
 
@@ -165,6 +228,21 @@ describe('Environment Configuration', () => {
       expect(prodUrl.hash).toBe('');
       expect(devUrl.hash).toBe('');
     });
+
+    it('production hubUrl should be a well-formed URL', () => {
+      const url = new URL(prodEnvironment.hubUrl);
+      expect(url.protocol).toBe('https:');
+      expect(url.hostname).toBe('api.kanbai.com');
+      expect(url.pathname).toBe('/hubs/kanban');
+    });
+
+    it('development hubUrl should be a well-formed URL', () => {
+      const url = new URL(devEnvironment.hubUrl);
+      expect(url.protocol).toBe('http:');
+      expect(url.hostname).toBe('localhost');
+      expect(url.port).toBe('5257');
+      expect(url.pathname).toBe('/hubs/kanban');
+    });
   });
 
   describe('Acceptance Criteria Coverage', () => {
@@ -187,8 +265,8 @@ describe('Environment Configuration', () => {
       const prodProps = Object.keys(prodEnvironment).sort();
       const devProps = Object.keys(devEnvironment).sort();
 
-      expect(prodProps).toEqual(['apiUrl', 'production']);
-      expect(devProps).toEqual(['apiUrl', 'production']);
+      expect(prodProps).toEqual(['apiUrl', 'hubUrl', 'production']);
+      expect(devProps).toEqual(['apiUrl', 'hubUrl', 'production']);
     });
 
     it('AC: Can import environment from src/environments/environment', () => {
