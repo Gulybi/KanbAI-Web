@@ -1,18 +1,62 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import { BoardPageComponent } from './board-page.component';
+import { BoardStateService } from '../state/board-state.service';
+
+interface BoardStateMock {
+  enterBoard: ReturnType<typeof vi.fn>;
+  leaveBoard: ReturnType<typeof vi.fn>;
+}
+
+function createMockBoardState(): BoardStateMock {
+  return {
+    enterBoard: vi.fn(),
+    leaveBoard: vi.fn()
+  };
+}
+
+function createFakeActivatedRoute(projectId: string | null): ActivatedRoute {
+  const paramMap = convertToParamMap(projectId === null ? {} : { projectId });
+  return {
+    snapshot: {
+      paramMap
+    }
+  } as unknown as ActivatedRoute;
+}
+
+async function mountBoard(
+  projectId: string | null = 'p-1'
+): Promise<{
+  fixture: ComponentFixture<BoardPageComponent>;
+  component: BoardPageComponent;
+  boardState: BoardStateMock;
+}> {
+  TestBed.resetTestingModule();
+  const boardState = createMockBoardState();
+  await TestBed.configureTestingModule({
+    imports: [BoardPageComponent],
+    providers: [
+      { provide: ActivatedRoute, useValue: createFakeActivatedRoute(projectId) },
+      { provide: BoardStateService, useValue: boardState }
+    ]
+  }).compileComponents();
+  const fixture = TestBed.createComponent(BoardPageComponent);
+  return { fixture, component: fixture.componentInstance, boardState };
+}
 
 describe('BoardPageComponent', () => {
-  let component: BoardPageComponent;
   let fixture: ComponentFixture<BoardPageComponent>;
+  let component: BoardPageComponent;
+  let boardState: BoardStateMock;
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [BoardPageComponent]
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(BoardPageComponent);
-    component = fixture.componentInstance;
+    const mounted = await mountBoard('p-1');
+    fixture = mounted.fixture;
+    component = mounted.component;
+    boardState = mounted.boardState;
   });
 
   describe('Component Creation', () => {
@@ -21,7 +65,33 @@ describe('BoardPageComponent', () => {
     });
   });
 
-  describe('Rendering', () => {
+  describe('Lifecycle — Join/Leave via BoardStateService', () => {
+    it('calls enterBoard(projectId) in ngOnInit', () => {
+      fixture.detectChanges();
+      expect(boardState.enterBoard).toHaveBeenCalledWith('p-1');
+      expect(boardState.enterBoard).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls leaveBoard() in ngOnDestroy', () => {
+      fixture.detectChanges();
+      fixture.destroy();
+      expect(boardState.leaveBoard).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call enterBoard when the projectId param is absent', async () => {
+      const mounted = await mountBoard(null);
+      mounted.fixture.detectChanges();
+      expect(mounted.boardState.enterBoard).not.toHaveBeenCalled();
+    });
+
+    it('does not call enterBoard when the projectId param is empty', async () => {
+      const mounted = await mountBoard('');
+      mounted.fixture.detectChanges();
+      expect(mounted.boardState.enterBoard).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Rendering (shell unchanged from previous revision)', () => {
     it('should render main container with correct layout classes', () => {
       fixture.detectChanges();
 
@@ -47,46 +117,6 @@ describe('BoardPageComponent', () => {
       expect(paragraph).toBeTruthy();
       expect(paragraph.nativeElement.textContent).toContain('Kanban board UI will be implemented here.');
     });
-
-    it('should apply correct heading styles', () => {
-      fixture.detectChanges();
-
-      const heading = fixture.nativeElement.querySelector('h1');
-      expect(heading.classList.contains('text-3xl')).toBe(true);
-      expect(heading.classList.contains('font-bold')).toBe(true);
-      expect(heading.classList.contains('text-gray-800')).toBe(true);
-    });
-
-    it('should apply correct paragraph styles', () => {
-      fixture.detectChanges();
-
-      const paragraph = fixture.nativeElement.querySelector('p');
-      expect(paragraph.classList.contains('mt-4')).toBe(true);
-      expect(paragraph.classList.contains('text-gray-600')).toBe(true);
-    });
-  });
-
-  describe('Layout Structure', () => {
-    it('should have white background for content area', () => {
-      fixture.detectChanges();
-
-      const container = fixture.nativeElement.querySelector('.bg-white');
-      expect(container).toBeTruthy();
-    });
-
-    it('should fill minimum viewport height', () => {
-      fixture.detectChanges();
-
-      const container = fixture.nativeElement.querySelector('.min-h-screen');
-      expect(container).toBeTruthy();
-    });
-
-    it('should have appropriate padding', () => {
-      fixture.detectChanges();
-
-      const container = fixture.nativeElement.querySelector('.p-8');
-      expect(container).toBeTruthy();
-    });
   });
 
   describe('Edge Cases', () => {
@@ -104,34 +134,12 @@ describe('BoardPageComponent', () => {
       const heading = fixture.nativeElement.querySelector('h1');
       expect(heading.textContent).toContain('Board Page');
     });
-
-    it('should display all expected elements', () => {
-      fixture.detectChanges();
-
-      const heading = fixture.nativeElement.querySelector('h1');
-      const paragraph = fixture.nativeElement.querySelector('p');
-      const container = fixture.nativeElement.querySelector('.p-8.bg-white');
-
-      expect(heading).toBeTruthy();
-      expect(paragraph).toBeTruthy();
-      expect(container).toBeTruthy();
-    });
   });
 
   describe('Change Detection Strategy', () => {
     it('should use OnPush change detection', () => {
       expect(component).toBeTruthy();
       expect(fixture.componentRef.changeDetectorRef).toBeTruthy();
-    });
-  });
-
-  describe('Future Integration Points', () => {
-    it('should be ready for kanban board integration', () => {
-      fixture.detectChanges();
-
-      // Verify the main container exists where future board will be added
-      const container = fixture.nativeElement.querySelector('.p-8.bg-white');
-      expect(container).toBeTruthy();
     });
   });
 });

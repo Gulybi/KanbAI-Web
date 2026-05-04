@@ -9,6 +9,7 @@ This document describes HTTP routes exposed by `KanbAI-Core`, request/response s
 | Scheme | JWT Bearer (`Authorization: Bearer <token>`) |
 | User identity | Controllers read `ClaimTypes.NameIdentifier` as `Guid` |
 | Anonymous | Health check; auth register/login |
+| SignalR | Browser WebSocket connections may pass the JWT as `?access_token=<jwt>` query string on requests to `/hubs/*` (handled by `JwtBearerEvents.OnMessageReceived` in `Program.cs`). |
 
 Endpoints marked **JWT** require a valid Bearer token.
 
@@ -93,6 +94,40 @@ Factories in code: `ApiResponse.Ok(...)`, `ApiResponse<T>.Ok(data, ...)`, `ApiRe
 **Create task** failures (examples): `404` column not found; `403` not a project member; `400` missing title, assignee not found, or assignee not a member.
 
 **Move task** failures (examples): `404` task or target column; `403` not a member; `400` cross-project move or invalid `taskOrder`.
+
+---
+
+## Real-time updates (SignalR)
+
+A SignalR hub is exposed at `/hubs/kanban` and is used by the backend to push board updates to connected clients. Authentication is required (JWT Bearer, or `?access_token=<jwt>` query string for browsers).
+
+### Hub methods (client → server)
+
+| Method | Parameters | Behaviour | Errors |
+|--------|------------|-----------|--------|
+| `JoinProjectGroup` | `projectId: string` (Guid) | Adds the current connection to the group `project_{projectId lowercase}` so it receives that project's broadcasts. | `HubException "Project ID is required."` on null/empty; `HubException "Invalid project ID format."` on non-Guid input. |
+| `LeaveProjectGroup` | `projectId: string` (Guid) | Removes the connection from the project's group. | Same as above. |
+
+The hub does **not** verify project membership on `JoinProjectGroup` — server-side authorization is enforced at the HTTP layer where the mutations happen, and broadcasts are only emitted after a successful mutation. Clients should call `LeaveProjectGroup` when navigating away from a board. SignalR cleans up group memberships automatically on disconnect.
+
+### Server-sent events (server → client)
+
+All events are broadcast to the group `project_{projectId lowercase}`. Payloads use camelCase property names (default ASP.NET Core JSON serialization).
+
+| Event name | Triggered by | Payload |
+|------------|--------------|---------|
+| `ProjectUpdated` | `PUT /api/project/{id}` | `ProjectUpdatedEventDto` |
+| `ProjectDeleted` | `DELETE /api/project/{id}` | `ProjectDeletedEventDto` |
+| `MemberAdded` | `POST /api/project/{projectId}/members` | `MemberResponseDto` |
+| `MemberRemoved` | `DELETE /api/project/{projectId}/members/{userId}` | `MemberRemovedEventDto` |
+| `ColumnCreated` | `POST /api/column/project/{projectId}` | `ColumnResponseDto` |
+| `ColumnDeleted` | `DELETE /api/column/{id}` | `ColumnDeletedEventDto` |
+| `TaskCreated` | `POST /api/task/column/{columnId}` | `TaskResponseDto` |
+| `TaskMoved` | `PUT /api/task/{taskId}/move` | `TaskMovedEventDto` |
+
+Broadcasts happen after the EF Core `SaveChangesAsync` succeeds. Broadcast failures are logged but do not fail the originating HTTP request — the mutation is the source of truth, the broadcast is best-effort notification.
+
+> ⚠️ **Not yet broadcast:** `ProjectCreated` (no group exists at creation time), and no task-update/task-delete events exist yet because those endpoints are not implemented. Clients relying on `GET /api/project` after page load will still reflect new projects.
 
 ---
 
@@ -227,6 +262,50 @@ The frontend Members UI (issue #33) sends `{ email }` only.
 | `columnId` | `string` (GUID) | Required — target column |
 | `taskOrder` | `number` | Required, ≥ 0 |
 
+### SignalR event DTOs
+
+**`ProjectUpdatedEventDto`**
+
+| JSON property | Type | Notes |
+|---------------|------|--------|
+| `projectId` | `string` (GUID) | |
+| `name` | `string` | |
+| `description` | `string \| null` | |
+| `updatedAt` | `string` (ISO 8601) | |
+
+**`ProjectDeletedEventDto`**
+
+| JSON property | Type | Notes |
+|---------------|------|--------|
+| `projectId` | `string` (GUID) | |
+
+**`MemberRemovedEventDto`**
+
+| JSON property | Type | Notes |
+|---------------|------|--------|
+| `userId` | `string` (GUID) | |
+| `projectId` | `string` (GUID) | |
+
+**`ColumnDeletedEventDto`**
+
+| JSON property | Type | Notes |
+|---------------|------|--------|
+| `columnId` | `string` (GUID) | |
+| `projectId` | `string` (GUID) | |
+
+**`TaskMovedEventDto`**
+
+| JSON property | Type | Notes |
+|---------------|------|--------|
+| `taskId` | `string` (GUID) | |
+| `oldColumnId` | `string` (GUID) | Column the task was in before the move |
+| `newColumnId` | `string` (GUID) | Column the task is in after the move |
+| `oldTaskOrder` | `number` | Previous order index |
+| `newTaskOrder` | `number` | New order index |
+| `task` | `TaskResponseDto` | Full post-move task state |
+
+The `MemberAdded`, `ColumnCreated`, and `TaskCreated` events send the corresponding response DTO (`MemberResponseDto`, `ColumnResponseDto`, `TaskResponseDto`) directly as the payload — no event-specific wrapper.
+
 ---
 
 ## Source locations
@@ -235,6 +314,7 @@ The frontend Members UI (issue #33) sends `{ email }` only.
 |------|------|
 | Controllers | `KanbAI-Core/KanbAI-Core/Controllers/` |
 | DTOs | `KanbAI-Core/KanbAI-Core/DTOs/` |
+| SignalR hub | `KanbAI-Core/KanbAI-Core/Hubs/KanbanHub.cs` |
 
 ---
 
@@ -254,4 +334,6 @@ Pairing this backend map with a few frontend-focused docs keeps UI work aligned 
 
 6. **Optional: OpenAPI-driven types** — If you generate TypeScript clients from the OpenAPI doc (`MapOpenApi` in Development), document the generation command and where generated files live.
 
-Together with **`backend_api_map.md`**, these give frontend developers enough context to implement safely without rediscovering quirks (especially the auth response shape vs `ApiResponse`).
+7. **SignalR integration notes** — How the SPA opens the `/hubs/kanban` connection (including passing the JWT via `?access_token` for browser WebSockets), when to call `JoinProjectGroup` / `LeaveProjectGroup`, and how each event (`TaskMoved`, `ColumnDeleted`, etc.) maps to local state reconciliation.
+
+Together with **`backend_api_map.md`**, these give frontend developers enough context to implement safely without rediscovering quirks (especially the auth response shape vs `ApiResponse` and the real-time event contracts).

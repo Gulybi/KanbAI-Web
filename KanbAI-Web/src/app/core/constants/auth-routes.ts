@@ -38,7 +38,7 @@ export const REGISTER_ROUTE = '/register';
  *
  * Add new authenticated routes here as they land (e.g., `/dashboard`).
  */
-export const PROTECTED_PATHS: readonly string[] = ['board', 'dashboard'];
+export const PROTECTED_PATHS: readonly string[] = ['board/:projectId', 'dashboard'];
 
 /**
  * Paths that MUST be protected by `unauthGuard` (visible to anonymous
