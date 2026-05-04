@@ -46,6 +46,8 @@ interface MembersStateMock {
   loadMembers: ReturnType<typeof vi.fn>;
   addMemberByEmail: ReturnType<typeof vi.fn>;
   removeMember: ReturnType<typeof vi.fn>;
+  setCurrentProjectContext: ReturnType<typeof vi.fn>;
+  clearCurrentProjectContext: ReturnType<typeof vi.fn>;
 }
 
 interface DialogMock {
@@ -87,7 +89,9 @@ async function mount(options: MountOptions = {}): Promise<{
     ),
     removeMember: vi.fn(
       options.removeImpl ?? ((_userId: string) => of(void 0))
-    )
+    ),
+    setCurrentProjectContext: vi.fn(),
+    clearCurrentProjectContext: vi.fn()
   };
 
   const dialog: DialogMock = {
@@ -134,6 +138,17 @@ describe('MembersDialogComponent', () => {
   it('calls loadMembers on init with the project id', async () => {
     const { membersState } = await mount();
     expect(membersState.loadMembers).toHaveBeenCalledWith('p-1');
+  });
+
+  it('sets the members-state realtime context to the open project id on init', async () => {
+    const { membersState } = await mount();
+    expect(membersState.setCurrentProjectContext).toHaveBeenCalledWith('p-1');
+  });
+
+  it('clears the members-state realtime context on destroy', async () => {
+    const { fixture, membersState } = await mount();
+    fixture.destroy();
+    expect(membersState.clearCurrentProjectContext).toHaveBeenCalledTimes(1);
   });
 
   it('renders the heading with the project name (id="members-dialog-title")', async () => {

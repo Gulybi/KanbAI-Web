@@ -122,6 +122,13 @@ export class MembersDialogComponent implements OnInit {
 
   ngOnInit(): void {
     this.liveMessage.set('Loading members…');
+    // Attribute `MemberAdded` realtime events to this project while the
+    // dialog is open — the event payload carries no projectId (see
+    // `MembersStateService.onMemberAdded`). Context is cleared on destroy.
+    this.membersState.setCurrentProjectContext(this.data.project.id);
+    this.destroyRef.onDestroy(() => {
+      this.membersState.clearCurrentProjectContext();
+    });
     this.membersState.loadMembers(this.data.project.id);
   }
 

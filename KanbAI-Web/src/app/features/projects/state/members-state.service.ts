@@ -1,10 +1,19 @@
-import { Injectable, Signal, computed, effect, inject } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  Signal,
+  computed,
+  effect,
+  inject,
+  signal
+} from '@angular/core';
 import { Observable, Subscription, of, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import { HttpErrorResponse } from '@angular/common/http';
 
 import { BaseStateService } from '../../../core/state/base-state.service';
 import { AuthService } from '../../../core/services/AuthService';
+import { SignalRService } from '../../../core/services/signalr.service';
 import { MemberSummary } from '../models/member.model';
 import {
   INITIAL_MEMBERS_STATE,
@@ -17,6 +26,11 @@ import {
   mapMemberErrorToUserMessage
 } from '../services/members-api.service';
 import { ProjectStateService } from './project-state.service';
+import {
+  MemberAddedEvent,
+  MemberRemovedEvent,
+  REALTIME_EVENT
+} from '../../../core/models/realtime-events';
 
 /**
  * Per-project members cache.
@@ -39,9 +53,30 @@ export class MembersStateService extends BaseStateService<MembersState> {
   private readonly membersApi = inject(MembersApiService);
   private readonly authService = inject(AuthService);
   private readonly projectState = inject(ProjectStateService);
+  private readonly signalRService = inject(SignalRService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Map<projectId, Subscription> for in-flight list loads. */
   private readonly inFlightLoads: Map<string, Subscription> = new Map();
+
+  /**
+   * Active real-time event subscriptions. Refreshed on every
+   * `connectionState → 'connected'` transition so a post-logout login
+   * re-subscribes against the fresh Subjects minted after `stop()`/`start()`.
+   */
+  private realtimeSubscriptions: Subscription[] = [];
+
+  /**
+   * Id of the project whose members dialog is currently open, if any.
+   * Drives attribution for the `MemberAdded` event, whose payload does
+   * not carry a `projectId` (see tech spec §"Known Backend Contract
+   * Caveats"). Set by {@link setCurrentProjectContext} on dialog open,
+   * cleared by {@link clearCurrentProjectContext} on dialog close.
+   */
+  private readonly contextSignal = signal<string | null>(null);
+
+  /** Read-only context signal. Consumed by the dialog component's tests. */
+  readonly currentProjectContext = this.contextSignal.asReadonly();
 
   constructor() {
     super();
@@ -62,6 +97,42 @@ export class MembersStateService extends BaseStateService<MembersState> {
       const ids = new Set(this.projectState.projects().map(p => p.id));
       this.pruneRemovedProjects(ids);
     });
+
+    // Real-time subscriber registration — re-runs on every connection-state
+    // transition so post-logout logins re-wire against fresh Subjects.
+    effect(() => {
+      const state = this.signalRService.connectionState();
+      if (state !== 'connected') {
+        this.teardownRealtimeSubscriptions();
+        return;
+      }
+      this.teardownRealtimeSubscriptions();
+      this.realtimeSubscriptions.push(
+        this.signalRService
+          .on<MemberAddedEvent>(REALTIME_EVENT.MemberAdded)
+          .subscribe(evt => this.onMemberAdded(evt))
+      );
+      this.realtimeSubscriptions.push(
+        this.signalRService
+          .on<MemberRemovedEvent>(REALTIME_EVENT.MemberRemoved)
+          .subscribe(evt => this.onMemberRemoved(evt))
+      );
+    });
+
+    this.destroyRef.onDestroy(() => this.teardownRealtimeSubscriptions());
+  }
+
+  /**
+   * Called by the members-dialog component on open. Attribution hook for
+   * `MemberAdded` events, whose payload lacks `projectId`.
+   */
+  setCurrentProjectContext(projectId: string): void {
+    this.contextSignal.set(projectId);
+  }
+
+  /** Called by the members-dialog component on close. */
+  clearCurrentProjectContext(): void {
+    this.contextSignal.set(null);
   }
 
   protected getInitialState(): MembersState {
@@ -233,5 +304,59 @@ export class MembersStateService extends BaseStateService<MembersState> {
       typeof (m as MemberSummary).name === 'string' &&
       typeof (m as MemberSummary).email === 'string'
     );
+  }
+
+  // ------------------- realtime handlers -------------------
+
+  /**
+   * Reconcile `MemberRemoved`: drop the user from the project's slice.
+   * Silent no-op if the slice is missing (dialog never opened for this id)
+   * or the user is already absent (AC11).
+   */
+  private onMemberRemoved(evt: MemberRemovedEvent): void {
+    if (!evt || typeof evt.projectId !== 'string' || typeof evt.userId !== 'string') {
+      return;
+    }
+    this.removeLocalMember(evt.projectId, evt.userId);
+  }
+
+  /**
+   * Reconcile `MemberAdded`. ⚠ The payload does not include `projectId`;
+   * attribution is done via the "current project context" set by the open
+   * members dialog. If no context is set, the event is dropped — per the
+   * documented best-effort behavior until the backend wraps the payload.
+   *
+   * Silent no-op when: no context; slice missing; user already in slice.
+   */
+  private onMemberAdded(evt: MemberAddedEvent): void {
+    if (!evt || typeof evt.userId !== 'string' || evt.userId.length === 0) {
+      return;
+    }
+    const projectId = this.contextSignal();
+    if (projectId === null) {
+      return;
+    }
+    const slice = this.getState().byProjectId[projectId];
+    if (slice === undefined) {
+      return;
+    }
+    if (slice.members.some(m => m.userId === evt.userId)) {
+      return;
+    }
+    const newMember: MemberSummary = {
+      userId: evt.userId,
+      name: evt.name,
+      email: evt.email,
+      role: evt.role,
+      joinedAt: evt.joinedAt
+    };
+    this.upsertSlice(projectId, { members: [...slice.members, newMember] });
+  }
+
+  private teardownRealtimeSubscriptions(): void {
+    for (const sub of this.realtimeSubscriptions) {
+      sub.unsubscribe();
+    }
+    this.realtimeSubscriptions = [];
   }
 }

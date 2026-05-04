@@ -2,15 +2,63 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { WritableSignal, signal } from '@angular/core';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Subject } from 'rxjs';
 
 import { MembersStateService } from './members-state.service';
 import { ProjectStateService } from './project-state.service';
 import { AuthService } from '../../../core/services/AuthService';
+import {
+  SignalRConnectionState,
+  SignalRService
+} from '../../../core/services/signalr.service';
+import {
+  MemberAddedEvent,
+  MemberRemovedEvent,
+  REALTIME_EVENT
+} from '../../../core/models/realtime-events';
 import { UserProfileDto } from '../../../core/models/auth.models';
 import { ProjectSummary } from '../models/project.model';
 import { MemberSummary, MembersListResponse, AddMemberResponse } from '../models/member.model';
 import { environment } from '../../../../environments/environment';
+
+interface MockSignalRService {
+  connectionState: WritableSignal<SignalRConnectionState>;
+  on: ReturnType<typeof vi.fn>;
+  emit<T>(name: string, payload: T): void;
+  joinProjectGroup: ReturnType<typeof vi.fn>;
+  leaveProjectGroup: ReturnType<typeof vi.fn>;
+  start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  _subjects: Map<string, Subject<unknown>>;
+}
+
+function createMockSignalRService(
+  initialState: SignalRConnectionState = 'disconnected'
+): MockSignalRService {
+  const subjects = new Map<string, Subject<unknown>>();
+  const connectionState = signal<SignalRConnectionState>(initialState);
+  const onFn = vi.fn((name: string) => {
+    let subject = subjects.get(name);
+    if (!subject) {
+      subject = new Subject<unknown>();
+      subjects.set(name, subject);
+    }
+    return subject.asObservable();
+  });
+  return {
+    connectionState,
+    on: onFn,
+    emit<T>(name: string, payload: T): void {
+      subjects.get(name)?.next(payload);
+    },
+    joinProjectGroup: vi.fn().mockResolvedValue(undefined),
+    leaveProjectGroup: vi.fn().mockResolvedValue(undefined),
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+    _subjects: subjects
+  };
+}
 
 const BASE_URL = `${environment.apiUrl}/project`;
 const PROJECT_ID = 'proj-1';
@@ -45,10 +93,12 @@ describe('MembersStateService', () => {
   let httpMock: HttpTestingController;
   let currentUserSig: WritableSignal<UserProfileDto | null>;
   let projectsSig: WritableSignal<ProjectSummary[]>;
+  let signalRMock: MockSignalRService;
 
   beforeEach(() => {
     currentUserSig = signal<UserProfileDto | null>(MOCK_USER);
     projectsSig = signal<ProjectSummary[]>([makeProject()]);
+    signalRMock = createMockSignalRService('disconnected');
 
     TestBed.configureTestingModule({
       providers: [
@@ -73,7 +123,8 @@ describe('MembersStateService', () => {
             hasLoaded: signal(true),
             loadProjects: () => undefined
           }
-        }
+        },
+        { provide: SignalRService, useValue: signalRMock }
       ]
     });
 
@@ -350,6 +401,198 @@ describe('MembersStateService', () => {
 
       expect(service.selectForProject(PROJECT_ID)().members).toEqual([]);
       expect(service.selectForProject(PROJECT_ID)().hasLoaded).toBe(false);
+    });
+  });
+
+  describe('real-time events', () => {
+    /** Seeds a slice and transitions the mock connection to 'connected'. */
+    function seedSliceAndConnect(members: MemberSummary[]): void {
+      service.loadMembers(PROJECT_ID);
+      httpMock.expectOne(`${BASE_URL}/${PROJECT_ID}/members`).flush({
+        success: true,
+        message: null,
+        errors: [],
+        data: members
+      } satisfies MembersListResponse);
+      signalRMock.connectionState.set('connected');
+      TestBed.flushEffects();
+    }
+
+    describe('MemberRemoved', () => {
+      it('removes the user from the matching slice on event arrival', () => {
+        seedSliceAndConnect([
+          makeMember({ userId: 'u-1' }),
+          makeMember({ userId: 'u-2', name: 'Bob' })
+        ]);
+
+        signalRMock.emit<MemberRemovedEvent>(REALTIME_EVENT.MemberRemoved, {
+          projectId: PROJECT_ID,
+          userId: 'u-1'
+        });
+
+        expect(
+          service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+        ).toEqual(['u-2']);
+      });
+
+      it('is a silent no-op when the slice is missing', () => {
+        // Transition to connected WITHOUT loading the slice first.
+        signalRMock.connectionState.set('connected');
+        TestBed.flushEffects();
+
+        signalRMock.emit<MemberRemovedEvent>(REALTIME_EVENT.MemberRemoved, {
+          projectId: 'p-unknown',
+          userId: 'u-x'
+        });
+
+        // No slice was created.
+        expect(service.selectForProject('p-unknown')().hasLoaded).toBe(false);
+      });
+
+      it('is a silent no-op when the user is not in the slice', () => {
+        seedSliceAndConnect([makeMember({ userId: 'u-1' })]);
+
+        signalRMock.emit<MemberRemovedEvent>(REALTIME_EVENT.MemberRemoved, {
+          projectId: PROJECT_ID,
+          userId: 'u-missing'
+        });
+
+        expect(
+          service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+        ).toEqual(['u-1']);
+      });
+    });
+
+    describe('MemberAdded', () => {
+      it('appends when context is set to the matching project', () => {
+        seedSliceAndConnect([makeMember({ userId: 'u-1' })]);
+        service.setCurrentProjectContext(PROJECT_ID);
+
+        const added: MemberAddedEvent = {
+          userId: 'u-new',
+          name: 'New',
+          email: 'new@example.com',
+          role: 'Member',
+          joinedAt: '2026-04-30T00:00:00Z'
+        };
+        signalRMock.emit(REALTIME_EVENT.MemberAdded, added);
+
+        expect(
+          service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+        ).toEqual(['u-1', 'u-new']);
+      });
+
+      it('drops the event when no context is set', () => {
+        seedSliceAndConnect([makeMember({ userId: 'u-1' })]);
+        // Intentionally do NOT set context.
+
+        signalRMock.emit<MemberAddedEvent>(REALTIME_EVENT.MemberAdded, {
+          userId: 'u-new',
+          name: 'New',
+          email: 'new@example.com',
+          role: 'Member',
+          joinedAt: '2026-04-30T00:00:00Z'
+        });
+
+        expect(
+          service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+        ).toEqual(['u-1']);
+      });
+
+      it('dedupes a MemberAdded event that mirrors a locally-added row', () => {
+        seedSliceAndConnect([
+          makeMember({ userId: 'u-1' }),
+          makeMember({ userId: 'u-just-added', name: 'Just Added' })
+        ]);
+        service.setCurrentProjectContext(PROJECT_ID);
+
+        signalRMock.emit<MemberAddedEvent>(REALTIME_EVENT.MemberAdded, {
+          userId: 'u-just-added',
+          name: 'Just Added',
+          email: 'j@example.com',
+          role: 'Member',
+          joinedAt: '2026-04-30T00:00:00Z'
+        });
+
+        expect(
+          service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+        ).toEqual(['u-1', 'u-just-added']);
+      });
+
+      it('setCurrentProjectContext / clearCurrentProjectContext flip currentProjectContext', () => {
+        expect(service.currentProjectContext()).toBeNull();
+        service.setCurrentProjectContext(PROJECT_ID);
+        expect(service.currentProjectContext()).toBe(PROJECT_ID);
+        service.clearCurrentProjectContext();
+        expect(service.currentProjectContext()).toBeNull();
+      });
+    });
+
+    describe('Subscription teardown on disconnect (AC12 defense in depth)', () => {
+      it('stops reconciling MemberRemoved after connectionState leaves connected', () => {
+        seedSliceAndConnect([
+          makeMember({ userId: 'u-1' }),
+          makeMember({ userId: 'u-2', name: 'Bob' })
+        ]);
+        // Baseline: removal is reconciled while connected.
+        signalRMock.emit<MemberRemovedEvent>(REALTIME_EVENT.MemberRemoved, {
+          projectId: PROJECT_ID,
+          userId: 'u-1'
+        });
+        expect(
+          service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+        ).toEqual(['u-2']);
+
+        // Disconnect: the effect should tear down subscribers.
+        signalRMock.connectionState.set('disconnected');
+        TestBed.flushEffects();
+
+        // Emit on the stale Subject — if teardown worked, the handler is
+        // gone and state is untouched.
+        signalRMock.emit<MemberRemovedEvent>(REALTIME_EVENT.MemberRemoved, {
+          projectId: PROJECT_ID,
+          userId: 'u-2'
+        });
+        expect(
+          service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+        ).toEqual(['u-2']);
+      });
+    });
+
+    describe('Console hygiene', () => {
+      it('never logs payload fields in handler execution', () => {
+        const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        seedSliceAndConnect([makeMember({ userId: 'secret-user-id' })]);
+        service.setCurrentProjectContext(PROJECT_ID);
+
+        signalRMock.emit<MemberAddedEvent>(REALTIME_EVENT.MemberAdded, {
+          userId: 'another-secret-id',
+          name: 'Name',
+          email: 'private@example.com',
+          role: 'Member',
+          joinedAt: '2026-04-30T00:00:00Z'
+        });
+        signalRMock.emit<MemberRemovedEvent>(REALTIME_EVENT.MemberRemoved, {
+          projectId: PROJECT_ID,
+          userId: 'secret-user-id'
+        });
+
+        const allArgs = [
+          ...consoleLogSpy.mock.calls.flat(),
+          ...consoleErrorSpy.mock.calls.flat()
+        ];
+        for (const arg of allArgs) {
+          const asString = typeof arg === 'string' ? arg : JSON.stringify(arg);
+          expect(asString).not.toContain('secret-user-id');
+          expect(asString).not.toContain('another-secret-id');
+          expect(asString).not.toContain('private@example.com');
+        }
+
+        consoleLogSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+      });
     });
   });
 });

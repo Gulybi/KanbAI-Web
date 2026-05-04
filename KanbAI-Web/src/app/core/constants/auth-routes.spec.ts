@@ -36,9 +36,11 @@ describe('auth-routes constants', () => {
       expect(PROTECTED_PATHS).toContain('dashboard');
     });
 
-    it('retains "board" so the legacy route keeps its guard coverage', () => {
-      // The tech spec (Q3) preserves /board to avoid churning pre-existing tests.
-      expect(PROTECTED_PATHS).toContain('board');
+    it('includes the parameterized board route "board/:projectId" for guard coverage', () => {
+      // Issue #46 replaces the legacy `/board` shell route with
+      // `/board/:projectId` so BoardPageComponent can read the project id
+      // for JoinProjectGroup / LeaveProjectGroup. Guard coverage moves with it.
+      expect(PROTECTED_PATHS).toContain('board/:projectId');
     });
 
     it('stores bare path segments (no leading slash) so routes.find(r => r.path === p) works', () => {

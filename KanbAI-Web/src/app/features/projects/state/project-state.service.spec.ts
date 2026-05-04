@@ -5,12 +5,61 @@ import {
   provideHttpClientTesting
 } from '@angular/common/http/testing';
 import { WritableSignal, signal } from '@angular/core';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Subject } from 'rxjs';
 
 import { ProjectStateService } from './project-state.service';
 import { AuthService } from '../../../core/services/AuthService';
 import { UserProfileDto } from '../../../core/models/auth.models';
 import { ProjectSummary, ApiResponse } from '../models/project.model';
 import { environment } from '../../../../environments/environment';
+import {
+  SignalRConnectionState,
+  SignalRService
+} from '../../../core/services/signalr.service';
+import {
+  ProjectDeletedEvent,
+  ProjectUpdatedEvent,
+  REALTIME_EVENT
+} from '../../../core/models/realtime-events';
+
+interface MockSignalRService {
+  connectionState: WritableSignal<SignalRConnectionState>;
+  on: ReturnType<typeof vi.fn>;
+  emit<T>(name: string, payload: T): void;
+  joinProjectGroup: ReturnType<typeof vi.fn>;
+  leaveProjectGroup: ReturnType<typeof vi.fn>;
+  start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  _subjects: Map<string, Subject<unknown>>;
+}
+
+function createMockSignalRService(
+  initialState: SignalRConnectionState = 'disconnected'
+): MockSignalRService {
+  const subjects = new Map<string, Subject<unknown>>();
+  const connectionState = signal<SignalRConnectionState>(initialState);
+  const onFn = vi.fn((name: string) => {
+    let subject = subjects.get(name);
+    if (!subject) {
+      subject = new Subject<unknown>();
+      subjects.set(name, subject);
+    }
+    return subject.asObservable();
+  });
+  return {
+    connectionState,
+    on: onFn,
+    emit<T>(name: string, payload: T): void {
+      subjects.get(name)?.next(payload);
+    },
+    joinProjectGroup: vi.fn().mockResolvedValue(undefined),
+    leaveProjectGroup: vi.fn().mockResolvedValue(undefined),
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+    _subjects: subjects
+  };
+}
 
 const LIST_URL = `${environment.apiUrl}/project`;
 
@@ -36,9 +85,11 @@ describe('ProjectStateService', () => {
   let service: ProjectStateService;
   let httpMock: HttpTestingController;
   let currentUserSig: WritableSignal<UserProfileDto | null>;
+  let signalRMock: MockSignalRService;
 
   beforeEach(() => {
     currentUserSig = signal<UserProfileDto | null>(MOCK_USER);
+    signalRMock = createMockSignalRService('disconnected');
 
     TestBed.configureTestingModule({
       providers: [
@@ -59,12 +110,14 @@ describe('ProjectStateService', () => {
               currentUserSig.set(null);
             }
           }
-        }
+        },
+        { provide: SignalRService, useValue: signalRMock }
       ]
     });
 
     service = TestBed.inject(ProjectStateService);
     httpMock = TestBed.inject(HttpTestingController);
+    TestBed.flushEffects();
   });
 
   afterEach(() => {
@@ -636,6 +689,7 @@ describe('ProjectStateService', () => {
       // Fresh TestBed with currentUser=null from the start.
       TestBed.resetTestingModule();
       const unauthSig = signal<UserProfileDto | null>(null);
+      const unauthSignalR = createMockSignalRService('disconnected');
 
       TestBed.configureTestingModule({
         providers: [
@@ -650,7 +704,8 @@ describe('ProjectStateService', () => {
               register: () => undefined,
               logout: () => unauthSig.set(null)
             }
-          }
+          },
+          { provide: SignalRService, useValue: unauthSignalR }
         ]
       });
 
@@ -665,6 +720,247 @@ describe('ProjectStateService', () => {
       // No HTTP request was issued.
       const http = TestBed.inject(HttpTestingController);
       http.expectNone(LIST_URL);
+    });
+  });
+
+  describe('real-time events', () => {
+    /** Loads a seed list + transitions the connection to 'connected'. */
+    function seedAndConnect(seed: ProjectSummary[]): void {
+      service.loadProjects();
+      httpMock.expectOne(LIST_URL).flush({
+        success: true,
+        message: null,
+        errors: [],
+        data: seed
+      } satisfies ApiResponse<ProjectSummary[]>);
+      signalRMock.connectionState.set('connected');
+      TestBed.flushEffects();
+    }
+
+    describe('ProjectUpdated', () => {
+      it('replaces the matching entry in place on event arrival', () => {
+        const seed = [
+          makeProjectSummary({ id: 'p-1', name: 'One', updatedAt: '2026-04-10T00:00:00Z' }),
+          makeProjectSummary({ id: 'p-2', name: 'Two' })
+        ];
+        seedAndConnect(seed);
+
+        const evt: ProjectUpdatedEvent = {
+          projectId: 'p-1',
+          name: 'One (renamed)',
+          description: 'updated desc',
+          updatedAt: '2026-04-11T00:00:00Z'
+        };
+        signalRMock.emit(REALTIME_EVENT.ProjectUpdated, evt);
+
+        const ids = service.projects().map(p => p.id);
+        expect(ids).toEqual(['p-1', 'p-2']);
+        const updated = service.projects()[0];
+        expect(updated.name).toBe('One (renamed)');
+        expect(updated.description).toBe('updated desc');
+        expect(updated.updatedAt).toBe('2026-04-11T00:00:00Z');
+        // Role/createdAt preserved.
+        expect(updated.role).toBe('Owner');
+        expect(updated.createdAt).toBe(seed[0].createdAt);
+      });
+
+      it('is a silent no-op when the project is not in local state', () => {
+        seedAndConnect([makeProjectSummary({ id: 'p-1' })]);
+        const before = service.projects();
+
+        signalRMock.emit<ProjectUpdatedEvent>(REALTIME_EVENT.ProjectUpdated, {
+          projectId: 'p-unknown',
+          name: 'x',
+          description: null,
+          updatedAt: '2026-04-11T00:00:00Z'
+        });
+
+        // Same reference / same data; no mutation.
+        expect(service.projects()).toEqual(before);
+      });
+    });
+
+    describe('ProjectDeleted', () => {
+      it('removes the matching entry on event arrival', () => {
+        seedAndConnect([
+          makeProjectSummary({ id: 'p-1' }),
+          makeProjectSummary({ id: 'p-2' })
+        ]);
+
+        signalRMock.emit<ProjectDeletedEvent>(REALTIME_EVENT.ProjectDeleted, {
+          projectId: 'p-1'
+        });
+
+        expect(service.projects().map(p => p.id)).toEqual(['p-2']);
+      });
+
+      it('is a silent no-op when the project is already absent', () => {
+        seedAndConnect([makeProjectSummary({ id: 'p-1' })]);
+
+        signalRMock.emit<ProjectDeletedEvent>(REALTIME_EVENT.ProjectDeleted, {
+          projectId: 'p-missing'
+        });
+
+        expect(service.projects().map(p => p.id)).toEqual(['p-1']);
+      });
+    });
+
+    describe('auto Join / Leave group membership (Layer 1)', () => {
+      it('invokes joinProjectGroup for every seeded project on first connect', () => {
+        seedAndConnect([
+          makeProjectSummary({ id: 'p-1' }),
+          makeProjectSummary({ id: 'p-2' })
+        ]);
+
+        expect(signalRMock.joinProjectGroup).toHaveBeenCalledWith('p-1');
+        expect(signalRMock.joinProjectGroup).toHaveBeenCalledWith('p-2');
+        expect(signalRMock.joinProjectGroup).toHaveBeenCalledTimes(2);
+        expect(signalRMock.leaveProjectGroup).not.toHaveBeenCalled();
+      });
+
+      it('fires a Leave when a project is removed via ProjectDeleted', () => {
+        seedAndConnect([
+          makeProjectSummary({ id: 'p-1' }),
+          makeProjectSummary({ id: 'p-2' })
+        ]);
+        signalRMock.joinProjectGroup.mockClear();
+
+        signalRMock.emit<ProjectDeletedEvent>(REALTIME_EVENT.ProjectDeleted, {
+          projectId: 'p-1'
+        });
+        TestBed.flushEffects();
+
+        expect(signalRMock.leaveProjectGroup).toHaveBeenCalledWith('p-1');
+        expect(signalRMock.leaveProjectGroup).toHaveBeenCalledTimes(1);
+        expect(signalRMock.joinProjectGroup).not.toHaveBeenCalled();
+      });
+
+      it('re-joins all projects after a reconnect cycle', () => {
+        seedAndConnect([
+          makeProjectSummary({ id: 'p-1' }),
+          makeProjectSummary({ id: 'p-2' })
+        ]);
+        expect(signalRMock.joinProjectGroup).toHaveBeenCalledTimes(2);
+
+        // Simulate reconnect: connected → reconnecting → connected.
+        signalRMock.joinProjectGroup.mockClear();
+        signalRMock.leaveProjectGroup.mockClear();
+
+        signalRMock.connectionState.set('reconnecting');
+        TestBed.flushEffects();
+        signalRMock.connectionState.set('connected');
+        TestBed.flushEffects();
+
+        // Every project was re-joined; no Leave fired for ids that are
+        // still in the list.
+        expect(signalRMock.joinProjectGroup).toHaveBeenCalledWith('p-1');
+        expect(signalRMock.joinProjectGroup).toHaveBeenCalledWith('p-2');
+        expect(signalRMock.joinProjectGroup).toHaveBeenCalledTimes(2);
+        expect(signalRMock.leaveProjectGroup).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Subscription teardown on disconnect (AC12 defense in depth)', () => {
+      it('stops reconciling ProjectUpdated after connectionState leaves connected', () => {
+        seedAndConnect([makeProjectSummary({ id: 'p-1', name: 'Original' })]);
+        // Baseline: event arrives while connected — state updates.
+        signalRMock.emit<ProjectUpdatedEvent>(REALTIME_EVENT.ProjectUpdated, {
+          projectId: 'p-1',
+          name: 'Live',
+          description: null,
+          updatedAt: '2026-04-11T00:00:00Z'
+        });
+        expect(service.projects()[0].name).toBe('Live');
+
+        // Disconnect: the effect should tear down subscribers.
+        signalRMock.connectionState.set('disconnected');
+        TestBed.flushEffects();
+
+        // Emit on the stale Subject — if teardown worked, the handler is
+        // gone and state is untouched.
+        signalRMock.emit<ProjectUpdatedEvent>(REALTIME_EVENT.ProjectUpdated, {
+          projectId: 'p-1',
+          name: 'Post-disconnect',
+          description: null,
+          updatedAt: '2026-04-12T00:00:00Z'
+        });
+        expect(service.projects()[0].name).toBe('Live');
+      });
+    });
+
+    describe('re-subscription after logout → login cycle', () => {
+      it('events arriving after a stop()/start() cycle still reconcile into state', () => {
+        // First connect cycle: seed, emit a successful event.
+        seedAndConnect([makeProjectSummary({ id: 'p-1', name: 'Before' })]);
+        signalRMock.emit<ProjectUpdatedEvent>(REALTIME_EVENT.ProjectUpdated, {
+          projectId: 'p-1',
+          name: 'After-first',
+          description: null,
+          updatedAt: '2026-04-11T00:00:00Z'
+        });
+        expect(service.projects()[0].name).toBe('After-first');
+
+        // Simulate logout: disconnect + reset the mock's subjects (the real
+        // SignalRService.stop() completes and discards them).
+        signalRMock.connectionState.set('disconnected');
+        TestBed.flushEffects();
+        signalRMock._subjects.clear();
+
+        // Simulate login: user reappears, a FRESH project list is loaded,
+        // and the connection transitions to 'connected'. A new Subject is
+        // minted by the mock `on` for each event; the service's effect
+        // must re-subscribe to those fresh Subjects.
+        currentUserSig.set(MOCK_USER);
+        service.loadProjects();
+        httpMock.expectOne(LIST_URL).flush({
+          success: true,
+          message: null,
+          errors: [],
+          data: [makeProjectSummary({ id: 'p-1', name: 'Before' })]
+        } satisfies ApiResponse<ProjectSummary[]>);
+        signalRMock.connectionState.set('connected');
+        TestBed.flushEffects();
+
+        // Emit an update on the NEW Subject.
+        signalRMock.emit<ProjectUpdatedEvent>(REALTIME_EVENT.ProjectUpdated, {
+          projectId: 'p-1',
+          name: 'After-second',
+          description: null,
+          updatedAt: '2026-04-12T00:00:00Z'
+        });
+
+        expect(service.projects()[0].name).toBe('After-second');
+      });
+    });
+
+    describe('Console hygiene', () => {
+      it('never logs the projectId in handler execution', () => {
+        const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        seedAndConnect([makeProjectSummary({ id: 'secret-project-id' })]);
+        signalRMock.emit<ProjectUpdatedEvent>(REALTIME_EVENT.ProjectUpdated, {
+          projectId: 'secret-project-id',
+          name: 'x',
+          description: null,
+          updatedAt: '2026-04-11T00:00:00Z'
+        });
+        signalRMock.emit<ProjectDeletedEvent>(REALTIME_EVENT.ProjectDeleted, {
+          projectId: 'secret-project-id'
+        });
+
+        const allArgs = [
+          ...consoleLogSpy.mock.calls.flat(),
+          ...consoleErrorSpy.mock.calls.flat()
+        ];
+        for (const arg of allArgs) {
+          const asString = typeof arg === 'string' ? arg : JSON.stringify(arg);
+          expect(asString).not.toContain('secret-project-id');
+        }
+
+        consoleLogSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+      });
     });
   });
 });

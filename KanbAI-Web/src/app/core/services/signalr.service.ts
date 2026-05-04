@@ -30,6 +30,24 @@ export interface SignalRServiceContract {
   start(): Promise<void>;
   stop(): Promise<void>;
   on<T>(eventName: string): Observable<T>;
+
+  /**
+   * Invokes the server hub method `JoinProjectGroup(projectId)` once the
+   * connection is `'connected'`. If called while not connected, the call is
+   * a no-op — the caller's connection-state effect is expected to re-trigger
+   * the join when the transport next reaches `'connected'`.
+   *
+   * Errors from the underlying `connection.invoke` (e.g. backend throws
+   * `HubException` on malformed id) are caught and a bare message is written
+   * via `console.error`; no payload fields are logged. The returned Promise
+   * never rejects, so `await`ing it never throws.
+   */
+  joinProjectGroup(projectId: string): Promise<void>;
+
+  /**
+   * Inverse of {@link joinProjectGroup}. Same error-handling contract.
+   */
+  leaveProjectGroup(projectId: string): Promise<void>;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -148,5 +166,45 @@ export class SignalRService implements SignalRServiceContract {
     }
 
     return (subject as Subject<T>).asObservable();
+  }
+
+  async joinProjectGroup(projectId: string): Promise<void> {
+    await this.invokeGroupMethod('JoinProjectGroup', projectId);
+  }
+
+  async leaveProjectGroup(projectId: string): Promise<void> {
+    await this.invokeGroupMethod('LeaveProjectGroup', projectId);
+  }
+
+  /**
+   * Shared implementation for `JoinProjectGroup` / `LeaveProjectGroup`.
+   *
+   * - Silently drops empty/whitespace project ids so the backend's
+   *   `HubException "Project ID is required."` is never provoked by a
+   *   caller bug.
+   * - No-ops when the connection is not yet `'connected'`; the
+   *   connection-state effect in state-service consumers re-invokes on
+   *   reconnect, so there is no need to queue here.
+   * - Writes a bare error message to `console.error` on invoke failure —
+   *   never includes the projectId, token, or any payload field.
+   */
+  private async invokeGroupMethod(
+    hubMethod: 'JoinProjectGroup' | 'LeaveProjectGroup',
+    projectId: string
+  ): Promise<void> {
+    if (typeof projectId !== 'string' || projectId.trim().length === 0) {
+      return;
+    }
+
+    const connection = this.connection;
+    if (!connection || this.state() !== 'connected') {
+      return;
+    }
+
+    try {
+      await connection.invoke(hubMethod, projectId);
+    } catch {
+      console.error(`SignalR ${hubMethod} failed`);
+    }
   }
 }

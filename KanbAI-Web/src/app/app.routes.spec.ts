@@ -39,8 +39,8 @@ describe('App Routing', () => {
       expect(loginRoute?.loadComponent).toBeDefined();
     });
 
-    it('should define board route', () => {
-      const boardRoute = routes.find(r => r.path === 'board');
+    it('should define parameterized board route', () => {
+      const boardRoute = routes.find(r => r.path === 'board/:projectId');
       expect(boardRoute).toBeTruthy();
       expect(boardRoute?.loadComponent).toBeDefined();
     });
@@ -70,10 +70,10 @@ describe('App Routing', () => {
       expect(location.path()).toBe('/login');
     });
 
-    it('should redirect /board to /login with returnUrl when unauthenticated (authGuard)', async () => {
-      await router.navigate(['/board']);
+    it('should redirect /board/:projectId to /login with returnUrl when unauthenticated (authGuard)', async () => {
+      await router.navigate(['/board/proj-1']);
       // authGuard redirects to /login and preserves the attempted URL.
-      expect(location.path()).toBe('/login?returnUrl=%2Fboard');
+      expect(location.path()).toBe('/login?returnUrl=%2Fboard%2Fproj-1');
     });
 
     it('should navigate from login to board when guard allows', async () => {
@@ -82,14 +82,14 @@ describe('App Routing', () => {
 
       // Note: This test would need authStateService.setAuthState() to pass authGuard
       // For now, it will redirect to /login due to authGuard (with returnUrl preserved)
-      await router.navigate(['/board']);
-      expect(location.path()).toBe('/login?returnUrl=%2Fboard');
+      await router.navigate(['/board/proj-1']);
+      expect(location.path()).toBe('/login?returnUrl=%2Fboard%2Fproj-1');
     });
 
     it('should navigate from board to login', async () => {
-      // When unauthenticated, /board redirects to /login with returnUrl
-      await router.navigate(['/board']);
-      expect(location.path()).toBe('/login?returnUrl=%2Fboard');
+      // When unauthenticated, /board/:projectId redirects to /login with returnUrl
+      await router.navigate(['/board/proj-1']);
+      expect(location.path()).toBe('/login?returnUrl=%2Fboard%2Fproj-1');
 
       await router.navigate(['/login']);
       expect(location.path()).toBe('/login');
@@ -113,7 +113,7 @@ describe('App Routing', () => {
     });
 
     it('should lazy load BoardPageComponent', async () => {
-      const boardRoute = routes.find(r => r.path === 'board');
+      const boardRoute = routes.find(r => r.path === 'board/:projectId');
       expect(boardRoute?.loadComponent).toBeDefined();
 
       if (boardRoute?.loadComponent) {
@@ -142,7 +142,7 @@ describe('App Routing', () => {
 
     it('should handle rapid route switching', async () => {
       await router.navigate(['/login']);
-      await router.navigate(['/board']);
+      await router.navigate(['/board/proj-1']);
       await router.navigate(['/login']);
       // After the final explicit navigate to '/login', the returnUrl from the
       // prior /board redirect is cleared because we navigated to /login directly.

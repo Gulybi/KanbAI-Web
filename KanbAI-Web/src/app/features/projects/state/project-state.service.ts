@@ -1,9 +1,10 @@
-import { Injectable, Signal, effect, inject } from '@angular/core';
+import { DestroyRef, Injectable, Signal, effect, inject } from '@angular/core';
 import { Observable, Subscription, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 
 import { BaseStateService } from '../../../core/state/base-state.service';
 import { AuthService } from '../../../core/services/AuthService';
+import { SignalRService } from '../../../core/services/signalr.service';
 import { ProjectSummary } from '../models/project.model';
 import {
   INITIAL_PROJECT_STATE,
@@ -14,6 +15,11 @@ import {
   ProjectsApiService,
   mapErrorToUserMessage
 } from '../services/projects-api.service';
+import {
+  ProjectDeletedEvent,
+  ProjectUpdatedEvent,
+  REALTIME_EVENT
+} from '../../../core/models/realtime-events';
 
 /**
  * Single source of truth for the authenticated user's project list.
@@ -40,6 +46,8 @@ import {
 export class ProjectStateService extends BaseStateService<ProjectState> {
   private readonly projectsApi = inject(ProjectsApiService);
   private readonly authService = inject(AuthService);
+  private readonly signalRService = inject(SignalRService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /**
    * Subscription reference for the in-flight `loadProjects()` call, used
@@ -47,6 +55,22 @@ export class ProjectStateService extends BaseStateService<ProjectState> {
    * the user logs out mid-request.
    */
   private inFlightLoad: Subscription | null = null;
+
+  /**
+   * Active real-time event subscriptions. Refreshed on every
+   * `connectionState → 'connected'` transition so the fresh Subjects
+   * handed out by `SignalRService.on()` after a `stop()`/`start()` cycle
+   * (e.g. logout → login) are actually wired up.
+   */
+  private realtimeSubscriptions: Subscription[] = [];
+
+  /**
+   * Project ids currently represented as a SignalR group membership on the
+   * server. Maintained by the auto-join/leave effect below. Cleared on
+   * disconnect (server wipes group membership anyway; we re-join from
+   * scratch on reconnect).
+   */
+  private readonly joinedProjectIds = new Set<string>();
 
   // Public selectors — read-only signals exposed to the rest of the app.
   readonly projects: Signal<ProjectSummary[]> = this.select(state => state.projects);
@@ -66,6 +90,59 @@ export class ProjectStateService extends BaseStateService<ProjectState> {
         this.reset();
       }
     });
+
+    // Real-time subscriber (re-)registration. Re-runs whenever
+    // connectionState changes: on 'connected' we wire fresh subscribers
+    // against the fresh Subjects the transport handed out after the most
+    // recent `stop()`/`start()`. On any other state we tear down so we
+    // don't leak Subject references across cycles.
+    effect(() => {
+      const state = this.signalRService.connectionState();
+      if (state !== 'connected') {
+        this.teardownRealtimeSubscriptions();
+        return;
+      }
+      this.teardownRealtimeSubscriptions();
+      this.realtimeSubscriptions.push(
+        this.signalRService
+          .on<ProjectUpdatedEvent>(REALTIME_EVENT.ProjectUpdated)
+          .subscribe(evt => this.onProjectUpdated(evt))
+      );
+      this.realtimeSubscriptions.push(
+        this.signalRService
+          .on<ProjectDeletedEvent>(REALTIME_EVENT.ProjectDeleted)
+          .subscribe(evt => this.onProjectDeleted(evt))
+      );
+    });
+
+    // Layer-1 auto-join/leave (see tech spec §"Join strategy — two layers").
+    // Diffs `projects()` against `joinedProjectIds`; fires Join for newly
+    // desired ids and Leave for no-longer-desired ids. Runs only while
+    // connected — on disconnect the local tracking set is cleared so a
+    // subsequent reconnect re-joins everything from scratch.
+    effect(() => {
+      const connected = this.signalRService.connectionState() === 'connected';
+      if (!connected) {
+        this.joinedProjectIds.clear();
+        return;
+      }
+      const desired = new Set(this.projects().map(p => p.id));
+
+      for (const id of desired) {
+        if (!this.joinedProjectIds.has(id)) {
+          void this.signalRService.joinProjectGroup(id);
+          this.joinedProjectIds.add(id);
+        }
+      }
+      for (const id of Array.from(this.joinedProjectIds)) {
+        if (!desired.has(id)) {
+          void this.signalRService.leaveProjectGroup(id);
+          this.joinedProjectIds.delete(id);
+        }
+      }
+    });
+
+    this.destroyRef.onDestroy(() => this.teardownRealtimeSubscriptions());
   }
 
   protected getInitialState(): ProjectState {
@@ -202,5 +279,56 @@ export class ProjectStateService extends BaseStateService<ProjectState> {
       this.inFlightLoad = null;
     }
     this.replaceState(INITIAL_PROJECT_STATE);
+  }
+
+  // ------------------- realtime handlers -------------------
+
+  /**
+   * Reconcile `ProjectUpdated`: replace-in-place by projectId.
+   * Silent no-op if the project is not in the local list (AC11).
+   */
+  private onProjectUpdated(evt: ProjectUpdatedEvent): void {
+    if (!evt || typeof evt.projectId !== 'string') {
+      return;
+    }
+    const current = this.getState().projects;
+    const index = current.findIndex(p => p.id === evt.projectId);
+    if (index === -1) {
+      return;
+    }
+    const updated: ProjectSummary = {
+      ...current[index],
+      name: evt.name,
+      description: evt.description,
+      updatedAt: evt.updatedAt
+    };
+    const next = [
+      ...current.slice(0, index),
+      updated,
+      ...current.slice(index + 1)
+    ];
+    this.setState({ projects: next });
+  }
+
+  /**
+   * Reconcile `ProjectDeleted`: filter out the matching id.
+   * Silent no-op if the project is absent (AC11).
+   */
+  private onProjectDeleted(evt: ProjectDeletedEvent): void {
+    if (!evt || typeof evt.projectId !== 'string') {
+      return;
+    }
+    const current = this.getState().projects;
+    const next = current.filter(p => p.id !== evt.projectId);
+    if (next.length !== current.length) {
+      this.setState({ projects: next });
+    }
+  }
+
+  private teardownRealtimeSubscriptions(): void {
+    for (const sub of this.realtimeSubscriptions) {
+      sub.unsubscribe();
+    }
+    this.realtimeSubscriptions = [];
   }
 }

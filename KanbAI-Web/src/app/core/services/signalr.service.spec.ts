@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     start: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
+    invoke: ReturnType<typeof vi.fn>;
     onreconnecting: ReturnType<typeof vi.fn>;
     onreconnected: ReturnType<typeof vi.fn>;
     onclose: ReturnType<typeof vi.fn>;
@@ -44,6 +45,7 @@ const mocks = vi.hoisted(() => {
       on: vi.fn((name: string, handler: (payload: unknown) => void) => {
         handlers.set(name, handler);
       }),
+      invoke: vi.fn().mockResolvedValue(undefined),
       onreconnecting: vi.fn((cb: (...args: unknown[]) => void) => {
         conn._onreconnecting = cb;
       }),
@@ -646,6 +648,149 @@ describe('SignalRService', () => {
       }
 
       // (beforeEach of the next test restores the default build factory.)
+      consoleErrorSpy.mockRestore();
+      consoleLogSpy.mockRestore();
+    });
+  });
+
+  describe('joinProjectGroup() / leaveProjectGroup()', () => {
+    const PROJECT_ID = 'proj-abc-123';
+
+    it('invokes the underlying hub method once connected', async () => {
+      const auth = createAuthStub({ authenticated: true, token: 'fake-token' });
+      TestBed.configureTestingModule({
+        providers: [
+          SignalRService,
+          { provide: AuthStateService, useValue: auth }
+        ]
+      });
+
+      const service = TestBed.inject(SignalRService);
+      TestBed.flushEffects();
+      await flushMicrotasks();
+      await flushMicrotasks();
+      expect(service.connectionState()).toBe('connected');
+
+      const connection = mocks.state.latestBuilder!._connection;
+      await service.joinProjectGroup(PROJECT_ID);
+      await service.leaveProjectGroup(PROJECT_ID);
+
+      expect(connection.invoke).toHaveBeenCalledWith('JoinProjectGroup', PROJECT_ID);
+      expect(connection.invoke).toHaveBeenCalledWith('LeaveProjectGroup', PROJECT_ID);
+      expect(connection.invoke).toHaveBeenCalledTimes(2);
+    });
+
+    it('is a no-op when the connection is not yet connected', async () => {
+      const auth = createAuthStub({ authenticated: false, token: null });
+      TestBed.configureTestingModule({
+        providers: [
+          SignalRService,
+          { provide: AuthStateService, useValue: auth }
+        ]
+      });
+
+      const service = TestBed.inject(SignalRService);
+      TestBed.flushEffects();
+
+      await expect(service.joinProjectGroup(PROJECT_ID)).resolves.toBeUndefined();
+      await expect(service.leaveProjectGroup(PROJECT_ID)).resolves.toBeUndefined();
+
+      // No connection was ever built, so there is no invoke to spy on.
+      expect(mocks.state.builderCount).toBe(0);
+    });
+
+    it('is a no-op after auth drops to disconnected', async () => {
+      const auth = createAuthStub({ authenticated: true, token: 'fake-token' });
+      TestBed.configureTestingModule({
+        providers: [
+          SignalRService,
+          { provide: AuthStateService, useValue: auth }
+        ]
+      });
+
+      const service = TestBed.inject(SignalRService);
+      TestBed.flushEffects();
+      await flushMicrotasks();
+      await flushMicrotasks();
+
+      const connection = mocks.state.latestBuilder!._connection;
+
+      // Stop the connection (simulating logout).
+      auth._setAuthenticated(false);
+      auth._setToken(null);
+      TestBed.flushEffects();
+      await flushMicrotasks();
+      await flushMicrotasks();
+      expect(service.connectionState()).toBe('disconnected');
+
+      await service.joinProjectGroup(PROJECT_ID);
+      await service.leaveProjectGroup(PROJECT_ID);
+
+      // Stop was called, but no Join/Leave invocation ever reached the wire.
+      expect(connection.invoke).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when projectId is empty/whitespace', async () => {
+      const auth = createAuthStub({ authenticated: true, token: 'fake-token' });
+      TestBed.configureTestingModule({
+        providers: [
+          SignalRService,
+          { provide: AuthStateService, useValue: auth }
+        ]
+      });
+
+      const service = TestBed.inject(SignalRService);
+      TestBed.flushEffects();
+      await flushMicrotasks();
+      await flushMicrotasks();
+
+      await service.joinProjectGroup('');
+      await service.joinProjectGroup('   ');
+      await service.leaveProjectGroup('');
+
+      const connection = mocks.state.latestBuilder!._connection;
+      expect(connection.invoke).not.toHaveBeenCalled();
+    });
+
+    it('logs a bare error and never throws when the hub invoke rejects, and never logs the projectId', async () => {
+      const auth = createAuthStub({ authenticated: true, token: 'fake-token' });
+      TestBed.configureTestingModule({
+        providers: [
+          SignalRService,
+          { provide: AuthStateService, useValue: auth }
+        ]
+      });
+
+      const service = TestBed.inject(SignalRService);
+      TestBed.flushEffects();
+      await flushMicrotasks();
+      await flushMicrotasks();
+
+      const connection = mocks.state.latestBuilder!._connection;
+      // Reject with an error whose message contains the projectId — the
+      // service must NOT propagate that to any console sink.
+      connection.invoke = vi
+        .fn()
+        .mockRejectedValue(new Error(`boom: ${PROJECT_ID}`));
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+      // Never throws.
+      await expect(service.joinProjectGroup(PROJECT_ID)).resolves.toBeUndefined();
+      await expect(service.leaveProjectGroup(PROJECT_ID)).resolves.toBeUndefined();
+
+      // Both hub methods logged once each; neither log contains the id.
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const allArgs = [
+        ...consoleErrorSpy.mock.calls.flat(),
+        ...consoleLogSpy.mock.calls.flat()
+      ];
+      for (const arg of allArgs) {
+        const asString = typeof arg === 'string' ? arg : JSON.stringify(arg);
+        expect(asString).not.toContain(PROJECT_ID);
+      }
+
       consoleErrorSpy.mockRestore();
       consoleLogSpy.mockRestore();
     });
