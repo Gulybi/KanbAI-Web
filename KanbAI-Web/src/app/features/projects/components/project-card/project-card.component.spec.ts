@@ -179,4 +179,112 @@ describe('ProjectCardComponent', () => {
     btn.dispatchEvent(ev);
     expect(stopPropagation).toHaveBeenCalled();
   });
+
+  // ------------------------------------------------------------------
+  // openBoard activation (issue #66)
+  // ------------------------------------------------------------------
+
+  afterEach(() => window.getSelection()?.removeAllRanges());
+
+  it('exposes role="button" on the <article> host', async () => {
+    const fixture = await mount(base);
+    const article = fixture.nativeElement.querySelector('article');
+    expect(article.getAttribute('role')).toBe('button');
+  });
+
+  it('emits openBoard with the project when the article is clicked', async () => {
+    const fixture = await mount(base);
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const article: HTMLElement = fixture.nativeElement.querySelector('article');
+    article.click();
+
+    expect(emitted).toBeTruthy();
+    expect(emitted!.id).toBe(base.id);
+  });
+
+  it('emits openBoard with the project when Enter is pressed on the article', async () => {
+    const fixture = await mount(base);
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const article: HTMLElement = fixture.nativeElement.querySelector('article');
+    article.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+
+    expect(emitted).toBeTruthy();
+    expect(emitted!.id).toBe(base.id);
+  });
+
+  it('emits openBoard with the project when Space is pressed on the article, and prevents default', async () => {
+    const fixture = await mount(base);
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const article: HTMLElement = fixture.nativeElement.querySelector('article');
+    const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    const preventDefault = vi.spyOn(ev, 'preventDefault');
+    article.dispatchEvent(ev);
+
+    expect(emitted).toBeTruthy();
+    expect(emitted!.id).toBe(base.id);
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it('does NOT emit openBoard when the Manage-members button is clicked', async () => {
+    const fixture = await mount({ ...base, role: 'Owner' });
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('.project-card__manage-btn');
+    btn.click();
+
+    expect(emitted).toBeUndefined();
+  });
+
+  it('does NOT emit openBoard when Enter is pressed while the Manage-members button is the target', async () => {
+    const fixture = await mount({ ...base, role: 'Owner' });
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('.project-card__manage-btn');
+    // Dispatch from the button — target resolves inside `.project-card__manage-btn`
+    // and the card host handler skips activation.
+    btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+
+    expect(emitted).toBeUndefined();
+  });
+
+  it('does NOT emit openBoard when a text selection exists inside the card at click time', async () => {
+    const fixture = await mount(base);
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const article: HTMLElement = fixture.nativeElement.querySelector('article');
+    const title: HTMLElement = fixture.nativeElement.querySelector('.project-card__title');
+
+    // Attach to the document so window.getSelection() can observe the selection.
+    document.body.appendChild(article);
+
+    const range = document.createRange();
+    range.selectNodeContents(title);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    article.click();
+
+    expect(emitted).toBeUndefined();
+  });
+
+  it('does NOT emit openBoard on right-click (button !== 0)', async () => {
+    const fixture = await mount(base);
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const article: HTMLElement = fixture.nativeElement.querySelector('article');
+    article.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 2 }));
+
+    expect(emitted).toBeUndefined();
+  });
 });

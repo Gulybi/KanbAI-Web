@@ -4,6 +4,7 @@
       <app-project-card
         [project]="project"
         (manageMembersClick)="manageMembersClick.emit($event)"
+        (openBoard)="openBoard.emit($event)"
       ></app-project-card>
     </li>
   }

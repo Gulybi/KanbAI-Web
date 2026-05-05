@@ -24,7 +24,7 @@
   flex-direction: column;
   gap: $space-sm;
 
-  cursor: default;
+  cursor: pointer;
 
   transition:
     transform $motion-fast,

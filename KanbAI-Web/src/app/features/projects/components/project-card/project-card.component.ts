@@ -33,6 +33,19 @@ export class ProjectCardComponent {
   /** Emitted when the owner-only Manage-members icon-button is activated. */
   @Output() manageMembersClick = new EventEmitter<ProjectSummary>();
 
+  /**
+   * Emitted when the card host is activated (click, Enter, or Space).
+   * The Manage-members button and text-selection releases do NOT emit.
+   *
+   * Note to future contributors: the host `<article>` carries
+   * `role="button"` despite containing a nested `<button>` for
+   * Manage-members. WAI-ARIA 1.2 discourages this nesting, but the
+   * alternatives (role="link" with the same constraint, or no role)
+   * are worse in practice — see issue_66_tech_spec.md §"ARIA trade-off".
+   * Do not "fix" this by removing the role.
+   */
+  @Output() openBoard = new EventEmitter<ProjectSummary>();
+
   /** Stable id used by the template for aria-labelledby. */
   protected readonly titleId = computed(() => {
     const current = this._project();
@@ -77,5 +90,45 @@ export class ProjectCardComponent {
     // Prevent the parent card's click/tabindex interactions from firing.
     event.stopPropagation();
     this.manageMembersClick.emit(this.project);
+  }
+
+  protected onCardActivate(event: MouseEvent): void {
+    if (this.isInsideManageButton(event.target)) {
+      return;
+    }
+    if (this.isTextBeingSelected(event)) {
+      return;
+    }
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+    this.openBoard.emit(this.project);
+  }
+
+  protected onKeyboardActivate(event: Event): void {
+    // Angular types `(keydown.enter)` / `(keydown.space)` as `Event`; the
+    // runtime instance is always `KeyboardEvent`. `preventDefault()` lives
+    // on `Event`, so we do not need to narrow before calling it. Space's
+    // default page-scroll is suppressed here.
+    if (this.isInsideManageButton(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    this.openBoard.emit(this.project);
+  }
+
+  private isInsideManageButton(target: EventTarget | null): boolean {
+    return target instanceof Element
+      && !!target.closest('.project-card__manage-btn');
+  }
+
+  private isTextBeingSelected(event: MouseEvent): boolean {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.toString().length === 0) {
+      return false;
+    }
+    const host = event.currentTarget as HTMLElement;
+    const anchor = selection.anchorNode;
+    return !!anchor && host.contains(anchor);
   }
 }

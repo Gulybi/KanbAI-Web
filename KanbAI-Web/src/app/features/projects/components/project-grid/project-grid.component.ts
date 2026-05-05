@@ -22,6 +22,9 @@ export class ProjectGridComponent {
   /** Re-emitted from `ProjectCardComponent`'s owner-only Manage button. */
   @Output() manageMembersClick = new EventEmitter<ProjectSummary>();
 
+  /** Re-emitted from `ProjectCardComponent` when the card is activated. */
+  @Output() openBoard = new EventEmitter<ProjectSummary>();
+
   protected trackById(_index: number, project: ProjectSummary): string {
     return project.id;
   }
