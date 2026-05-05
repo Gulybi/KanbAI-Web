@@ -100,4 +100,20 @@ describe('ProjectGridComponent', () => {
     (cards[1].componentInstance as ProjectCardComponent).manageMembersClick.emit(projects[1]);
     expect(emitted).toEqual(projects[1]);
   });
+
+  // ------------------------------------------------------------------
+  // openBoard re-emit (issue #66)
+  // ------------------------------------------------------------------
+  it('re-emits openBoard from a child card', () => {
+    const projects = makeProjects(2);
+    fixture.componentRef.setInput('projects', projects);
+    fixture.detectChanges();
+
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.openBoard.subscribe(p => (emitted = p));
+
+    const cards = fixture.debugElement.queryAll(By.directive(ProjectCardComponent));
+    (cards[1].componentInstance as ProjectCardComponent).openBoard.emit(projects[1]);
+    expect(emitted).toEqual(projects[1]);
+  });
 });

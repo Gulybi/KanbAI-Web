@@ -12,6 +12,7 @@
         <app-project-grid
           [projects]="$any(vm()).projects"
           (manageMembersClick)="openMembersDialog($event)"
+          (openBoard)="openBoard($event)"
         ></app-project-grid>
       }
       @case ('empty') {

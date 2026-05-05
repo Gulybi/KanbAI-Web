@@ -1,7 +1,11 @@
 <article
   class="project-card"
+  role="button"
   tabindex="0"
   [attr.aria-labelledby]="titleId()"
+  (click)="onCardActivate($event)"
+  (keydown.enter)="onKeyboardActivate($event)"
+  (keydown.space)="onKeyboardActivate($event)"
 >
   <div class="project-card__header">
     <h2

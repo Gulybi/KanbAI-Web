@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
+import { Router } from '@angular/router';
 
 import { DashboardHeaderComponent } from '../components/dashboard-header/dashboard-header.component';
 import { DashboardSkeletonComponent } from '../components/dashboard-skeleton/dashboard-skeleton.component';
@@ -34,6 +35,7 @@ import { ProjectSummary } from '../models/project.model';
 export class DashboardPageComponent implements OnInit {
   private readonly projectState = inject(ProjectStateService);
   private readonly dialog = inject(Dialog);
+  private readonly router = inject(Router);
 
   /**
    * Discriminated-union view model collapsed from the four state-service
@@ -87,6 +89,10 @@ export class DashboardPageComponent implements OnInit {
       panelClass: 'create-project-dialog-panel',
       backdropClass: 'create-project-dialog-backdrop'
     });
+  }
+
+  protected openBoard(project: ProjectSummary): void {
+    this.router.navigate(['/board', project.id]);
   }
 
   protected openMembersDialog(project: ProjectSummary): void {

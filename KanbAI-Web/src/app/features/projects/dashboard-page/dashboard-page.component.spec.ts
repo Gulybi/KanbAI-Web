@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { WritableSignal, signal } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
+import { Router } from '@angular/router';
 import { vi } from 'vitest';
 
 import { DashboardPageComponent } from './dashboard-page.component';
@@ -27,6 +28,10 @@ interface DialogMock {
   open: ReturnType<typeof vi.fn>;
 }
 
+interface RouterMock {
+  navigate: ReturnType<typeof vi.fn>;
+}
+
 function makeProjects(count: number): ProjectSummary[] {
   return Array.from({ length: count }, (_, i) => ({
     id: `p-${i}`,
@@ -42,6 +47,7 @@ async function mount(): Promise<{
   fixture: ComponentFixture<DashboardPageComponent>;
   mock: ProjectStateMock;
   dialog: DialogMock;
+  router: RouterMock;
 }> {
   const mock: ProjectStateMock = {
     projects: signal<ProjectSummary[]>([]),
@@ -55,17 +61,22 @@ async function mount(): Promise<{
     open: vi.fn()
   };
 
+  const router: RouterMock = {
+    navigate: vi.fn()
+  };
+
   await TestBed.configureTestingModule({
     imports: [DashboardPageComponent],
     providers: [
       { provide: ProjectStateService, useValue: mock },
-      { provide: Dialog, useValue: dialog }
+      { provide: Dialog, useValue: dialog },
+      { provide: Router, useValue: router }
     ]
   }).compileComponents();
 
   const fixture = TestBed.createComponent(DashboardPageComponent);
   fixture.detectChanges();
-  return { fixture, mock, dialog };
+  return { fixture, mock, dialog, router };
 }
 
 describe('DashboardPageComponent', () => {
@@ -284,5 +295,55 @@ describe('DashboardPageComponent', () => {
 
     expect(fixture.debugElement.query(By.directive(DashboardSkeletonComponent))).toBeNull();
     expect(fixture.debugElement.query(By.directive(ProjectGridComponent))).toBeTruthy();
+  });
+
+  // ------------------------------------------------------------------
+  // openBoard navigation (issue #66)
+  // ------------------------------------------------------------------
+  it('navigates to /board/:projectId when the grid emits openBoard', async () => {
+    const { fixture, mock, router } = await mount();
+    const projects = makeProjects(2);
+    mock.projects.set(projects);
+    mock.hasLoaded.set(true);
+    mock.isLoading.set(false);
+    fixture.detectChanges();
+
+    const grid = fixture.debugElement.query(By.directive(ProjectGridComponent));
+    (grid.componentInstance as ProjectGridComponent).openBoard.emit(projects[0]);
+    fixture.detectChanges();
+
+    expect(router.navigate).toHaveBeenCalledTimes(1);
+    expect(router.navigate).toHaveBeenCalledWith(['/board', projects[0].id]);
+  });
+
+  it('passes the clicked card\'s own id, not some other card\'s id (regression guard)', async () => {
+    const { fixture, mock, router } = await mount();
+    const projects = makeProjects(3);
+    mock.projects.set(projects);
+    mock.hasLoaded.set(true);
+    mock.isLoading.set(false);
+    fixture.detectChanges();
+
+    const grid = fixture.debugElement.query(By.directive(ProjectGridComponent));
+    (grid.componentInstance as ProjectGridComponent).openBoard.emit(projects[1]);
+    fixture.detectChanges();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/board', projects[1].id]);
+  });
+
+  it('does not navigate on manageMembersClick (regression guard)', async () => {
+    const { fixture, mock, router, dialog } = await mount();
+    const projects = makeProjects(1);
+    mock.projects.set(projects);
+    mock.hasLoaded.set(true);
+    mock.isLoading.set(false);
+    fixture.detectChanges();
+
+    const grid = fixture.debugElement.query(By.directive(ProjectGridComponent));
+    (grid.componentInstance as ProjectGridComponent).manageMembersClick.emit(projects[0]);
+    fixture.detectChanges();
+
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(dialog.open).toHaveBeenCalledTimes(1);
   });
 });
