@@ -1,0 +1,39 @@
+<section class="board-column">
+  <header class="board-column__header">
+    <h2 class="board-column__name">{{ column().name }}</h2>
+    <span class="board-column__count" aria-hidden="true">{{ tasks().length }}</span>
+  </header>
+  @if (column().colorCode) {
+    <div
+      class="board-column__accent"
+      [style.background]="column().colorCode"
+      aria-hidden="true"
+    ></div>
+  }
+  <div
+    class="board-column__list"
+    role="list"
+    [attr.aria-label]="dropListAriaLabel()"
+    cdkDropList
+    [cdkDropListData]="tasks()"
+    [cdkDropListConnectedTo]="connectedDropListIds()"
+    [id]="dropListId()"
+    (cdkDropListDropped)="taskDropped.emit($event)"
+  >
+    @if (tasks().length === 0) {
+      <div class="board-column__empty-zone">
+        <p class="board-column__empty-hint">Drop a task here.</p>
+      </div>
+    } @else {
+      @for (task of tasks(); track task.id) {
+        <app-task-card
+          [task]="task"
+          [rollbackTrigger]="triggerFor(task.id)"
+          role="listitem"
+          cdkDrag
+          [cdkDragData]="task"
+        />
+      }
+    }
+  </div>
+</section>

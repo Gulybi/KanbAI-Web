@@ -1,0 +1,149 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/layout' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+  flex: 0 0 $kanban-column-width;
+  width: $kanban-column-width;
+  max-width: $kanban-column-width;
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+
+  max-height: calc(100vh - #{$topbar-height} - #{$space-xxl * 2});
+
+  background: $bg-sidebar-light;
+  border: 1px solid $border-light;
+  border-radius: $radius-lg;
+
+  // Drop-target border transition must not use `all` — only border-color
+  // and background animate, per our motion discipline.
+  transition:
+    border-color $motion-slow,
+    background    $motion-slow;
+}
+
+// ---- Header -------------------------------------------------------------
+.board-column__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-sm;
+
+  padding: $space-lg $space-lg $space-sm $space-lg;
+}
+
+.board-column__name {
+  margin: 0;
+
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $text-primary;
+
+  // Truncate overflow; never wrap — column width is fixed at 300 px.
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// ---- Optional color accent strip under the column name ------------------
+// Column.colorCode (backend-provided hex) paints a 4 px strip below the
+// header so color remains a signal — but it is NEVER the only channel;
+// the column name is always rendered in $text-primary.
+.board-column__accent {
+  height: 4px;
+  margin: 0 $space-lg $space-sm $space-lg;
+  border-radius: $radius-pill;
+  // inline style from component binds background to colorCode (fallback
+  // $brand-primary when colorCode is null).
+}
+
+.board-column__count {
+  flex: 0 0 auto;
+
+  padding: $space-xxs $space-sm;
+  min-width: 28px;
+
+  background: $brand-primary-light;
+  color: $text-primary;
+
+  border-radius: $radius-pill;
+
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-tight;
+  text-align: center;
+}
+
+// ---- Drop-list body -----------------------------------------------------
+.board-column__list {
+  flex: 1 1 auto;
+
+  display: flex;
+  flex-direction: column;
+  gap: $space-md;
+
+  padding: $space-xs $space-lg $space-lg $space-lg;
+
+  overflow-y: auto;
+
+  // CDK drop-list: when another card is hovering this column as a valid
+  // drop target, CDK toggles `.cdk-drop-list-receiving` on the host.
+  // We soften the column shell to signal "drop will land here".
+  &.cdk-drop-list-receiving,
+  &.cdk-drop-list-dragging {
+    background: $brand-primary-light;
+    border-radius: $radius-lg;
+  }
+}
+
+// Host-level drop-target pulse (border). CDK applies
+// `.cdk-drop-list-receiving` to the drop list element — we hoist the
+// affordance to the column shell for a calmer silhouette.
+.board-column:has(.board-column__list.cdk-drop-list-receiving) {
+  border-color: $border-dropzone;
+  background: $brand-primary-light;
+}
+
+// ---- Empty drop zone ----------------------------------------------------
+// The empty zone is rendered only when tasks.length === 0. It is itself
+// a valid drop target (the surrounding .board-column__list carries the
+// cdkDropList directive regardless of children).
+.board-column__empty-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xs;
+
+  min-height: 120px;
+  padding: $space-lg;
+
+  background: $bg-dropzone;
+  border: 2px dashed $border-dropzone;
+  border-radius: $radius-lg;
+
+  text-align: center;
+}
+
+.board-column__empty-hint {
+  margin: 0;
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+  // PM ruling 2026-05-04: "Drop a task here." is instructional copy,
+  // not incidental decoration. Use $text-primary to clear the 4.5:1
+  // body-text contrast rule against $bg-dropzone (16.3:1 AAA).
+  color: $text-primary;
+}
+
+// ---- Reduced motion ----------------------------------------------------
+// Global rule handles it; no per-component override needed.

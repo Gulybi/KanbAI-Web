@@ -17,6 +17,8 @@ import {
   TaskCreatedEvent,
   TaskMovedEvent
 } from '../../../core/models/realtime-events';
+import { BoardColumn } from './board-state.model';
+import { TaskResponseDto } from '../models/task.model';
 
 interface MockSignalRService {
   connectionState: WritableSignal<SignalRConnectionState>;
@@ -591,6 +593,435 @@ describe('BoardStateService', () => {
           signalRMock.emit(REALTIME_EVENT.TaskMoved, payload as TaskMovedEvent);
         }
       }).not.toThrow();
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #47 — optimistic drag-and-drop support
+  // ----------------------------------------------------------------------
+
+  describe('setColumns() (issue #47)', () => {
+    it('stores the columns sorted by columnOrder when projectId matches', () => {
+      service.enterBoard(PROJECT_ID);
+      const inbound: BoardColumn[] = [
+        { id: 'c-b', name: 'B', colorCode: null, columnOrder: 2, projectId: PROJECT_ID },
+        { id: 'c-a', name: 'A', colorCode: null, columnOrder: 1, projectId: PROJECT_ID }
+      ];
+      service.setColumns(PROJECT_ID, inbound);
+      expect(service.columns().map(c => c.id)).toEqual(['c-a', 'c-b']);
+    });
+
+    it('is a no-op when projectId does not match currentProjectId (stale response)', () => {
+      service.enterBoard(PROJECT_ID);
+      const inbound: BoardColumn[] = [
+        { id: 'c-a', name: 'A', colorCode: null, columnOrder: 1, projectId: OTHER_PROJECT_ID }
+      ];
+      service.setColumns(OTHER_PROJECT_ID, inbound);
+      expect(service.columns()).toEqual([]);
+    });
+
+    it('drops tasksByColumnId buckets for columns not in the new list', () => {
+      service.enterBoard(PROJECT_ID);
+      // Seed a pre-existing column + task.
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-keep',
+        name: 'Keep',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-drop',
+        name: 'Drop',
+        colorCode: null,
+        columnOrder: 2,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-keep',
+        title: 'keep',
+        content: null,
+        taskOrder: 1,
+        columnId: 'col-keep',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-drop',
+        title: 'drop',
+        content: null,
+        taskOrder: 1,
+        columnId: 'col-drop',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+
+      service.setColumns(PROJECT_ID, [
+        {
+          id: 'col-keep',
+          name: 'Keep',
+          colorCode: null,
+          columnOrder: 1,
+          projectId: PROJECT_ID
+        }
+      ]);
+
+      const buckets = service.tasksByColumnId();
+      expect(buckets['col-keep']?.map(t => t.id)).toEqual(['t-keep']);
+      expect(buckets['col-drop']).toBeUndefined();
+    });
+  });
+
+  describe('applyOptimisticTaskMove() (issue #47)', () => {
+    beforeEach(() => {
+      service.enterBoard(PROJECT_ID);
+      for (const [id, order] of [
+        ['col-1', 1],
+        ['col-2', 2]
+      ] as const) {
+        signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+          id,
+          name: id,
+          colorCode: null,
+          columnOrder: order,
+          projectId: PROJECT_ID,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+      // Seed col-1 with three tasks, col-2 with one.
+      for (const i of [0, 1, 2]) {
+        signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+          id: `t-${i}`,
+          title: `Task ${i}`,
+          content: null,
+          taskOrder: i,
+          columnId: 'col-1',
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-other',
+        title: 'Other',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-2',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+    });
+
+    it('within-column reorder: moves task, renumbers, returns token', () => {
+      const token = service.applyOptimisticTaskMove('t-2', 'col-1', 2, 'col-1', 0);
+      expect(token).not.toBeNull();
+      const bucket = service.tasksByColumnId()['col-1'];
+      expect(bucket.map(t => t.id)).toEqual(['t-2', 't-0', 't-1']);
+      expect(bucket.map(t => t.taskOrder)).toEqual([0, 1, 2]);
+    });
+
+    it('cross-column move: mutates both buckets and renumbers', () => {
+      const token = service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-2', 0);
+      expect(token).not.toBeNull();
+      const buckets = service.tasksByColumnId();
+      expect(buckets['col-1'].map(t => t.id)).toEqual(['t-1', 't-2']);
+      expect(buckets['col-1'].map(t => t.taskOrder)).toEqual([0, 1]);
+      expect(buckets['col-2'].map(t => t.id)).toEqual(['t-0', 't-other']);
+      expect(buckets['col-2'].map(t => t.taskOrder)).toEqual([0, 1]);
+      // The moved task now has columnId updated to the destination.
+      expect(buckets['col-2'][0].columnId).toBe('col-2');
+    });
+
+    it('returns a token carrying the pre-move snapshots for both buckets', () => {
+      const before = service.tasksByColumnId();
+      const fromBefore = [...before['col-1']];
+      const toBefore = [...before['col-2']];
+
+      const token = service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-2', 1);
+      expect(token).not.toBeNull();
+      expect(token?.fromColumnId).toBe('col-1');
+      expect(token?.toColumnId).toBe('col-2');
+      expect(token?.fromBucket).toEqual(fromBefore);
+      expect(token?.toBucket).toEqual(toBefore);
+    });
+
+    it('returns null and does not mutate state on no-op same-column same-order', () => {
+      const before = service.tasksByColumnId();
+      const token = service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-1', 0);
+      expect(token).toBeNull();
+      expect(service.tasksByColumnId()).toBe(before);
+    });
+
+    it('returns null when taskId is not present in the source bucket', () => {
+      const token = service.applyOptimisticTaskMove('t-unknown', 'col-1', 0, 'col-2', 0);
+      expect(token).toBeNull();
+    });
+
+    it('returns null when currentProjectId is null', () => {
+      service.leaveBoard();
+      const token = service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-2', 0);
+      expect(token).toBeNull();
+    });
+  });
+
+  describe('rollbackOptimisticTaskMove() (issue #47)', () => {
+    beforeEach(() => {
+      service.enterBoard(PROJECT_ID);
+      for (const [id, order] of [
+        ['col-1', 1],
+        ['col-2', 2]
+      ] as const) {
+        signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+          id,
+          name: id,
+          colorCode: null,
+          columnOrder: order,
+          projectId: PROJECT_ID,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+      for (const i of [0, 1]) {
+        signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+          id: `t-${i}`,
+          title: `Task ${i}`,
+          content: null,
+          taskOrder: i,
+          columnId: 'col-1',
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+    });
+
+    it('restores the exact pre-apply buckets after apply + rollback', () => {
+      const snapshot = service.tasksByColumnId();
+      const before1 = [...(snapshot['col-1'] ?? [])];
+      const before2 = [...(snapshot['col-2'] ?? [])];
+
+      const token = service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-2', 0);
+      expect(token).not.toBeNull();
+      // Sanity: state changed.
+      expect(service.tasksByColumnId()['col-2']?.length).toBeGreaterThan(before2.length);
+
+      service.rollbackOptimisticTaskMove(token!);
+
+      expect(service.tasksByColumnId()['col-1']).toEqual(before1);
+      expect(service.tasksByColumnId()['col-2']).toEqual(before2);
+    });
+
+    it('is a no-op when token.projectId does not match currentProjectId', () => {
+      const token = service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-2', 0);
+      expect(token).not.toBeNull();
+      const midState = service.tasksByColumnId();
+
+      // Navigate away.
+      service.enterBoard(OTHER_PROJECT_ID);
+      // Token was for PROJECT_ID — rollback should no-op against the new board.
+      service.rollbackOptimisticTaskMove(token!);
+
+      // We navigated away so the new board has empty buckets — and nothing
+      // the rollback could restore. State must not regain the old bucket.
+      expect(service.tasksByColumnId()).not.toEqual(midState);
+      expect(service.tasksByColumnId()).toEqual({});
+    });
+
+    it('within-column rollback restores only the single affected bucket', () => {
+      const token = service.applyOptimisticTaskMove('t-1', 'col-1', 1, 'col-1', 0);
+      expect(token).not.toBeNull();
+      service.rollbackOptimisticTaskMove(token!);
+      expect(service.tasksByColumnId()['col-1'].map(t => t.id)).toEqual(['t-0', 't-1']);
+    });
+  });
+
+  describe('reconcileServerTaskMove() (issue #47)', () => {
+    beforeEach(() => {
+      service.enterBoard(PROJECT_ID);
+      for (const [id, order] of [
+        ['col-1', 1],
+        ['col-2', 2]
+      ] as const) {
+        signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+          id,
+          name: id,
+          colorCode: null,
+          columnOrder: order,
+          projectId: PROJECT_ID,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-0',
+        title: 'T0',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+    });
+
+    it('is a safe idempotent no-op when the server DTO matches state', () => {
+      // Optimistically move into col-2 at order 0.
+      service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-2', 0);
+      const serverDto: TaskResponseDto = {
+        id: 't-0',
+        title: 'T0',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-2',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      };
+      service.reconcileServerTaskMove(serverDto);
+      const bucket = service.tasksByColumnId()['col-2'];
+      expect(bucket.length).toBe(1);
+      expect(bucket[0].id).toBe('t-0');
+      expect(bucket[0].taskOrder).toBe(0);
+    });
+
+    it('re-sorts the destination bucket when the server normalises taskOrder', () => {
+      // Seed col-2 with an existing task at order 0.
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-other',
+        title: 'Other',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-2',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      // Optimistically insert t-0 at col-2 index 0 (so t-other is at 1 locally).
+      service.applyOptimisticTaskMove('t-0', 'col-1', 0, 'col-2', 0);
+      // Server normalises t-0 to the tail (taskOrder 5 — arbitrarily bigger than
+      // anything else in the column).
+      const serverDto: TaskResponseDto = {
+        id: 't-0',
+        title: 'T0',
+        content: null,
+        taskOrder: 5,
+        columnId: 'col-2',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      };
+      service.reconcileServerTaskMove(serverDto);
+      const bucket = service.tasksByColumnId()['col-2'];
+      expect(bucket.map(t => t.id)[bucket.length - 1]).toBe('t-0');
+      expect(bucket.find(t => t.id === 't-0')?.taskOrder).toBe(5);
+    });
+
+    it('is a no-op when the response columnId is not known to local state', () => {
+      const before = service.tasksByColumnId();
+      service.reconcileServerTaskMove({
+        id: 't-0',
+        title: 'T0',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-ghost',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()).toEqual(before);
+    });
+
+    it('is a no-op when currentProjectId is null', () => {
+      service.leaveBoard();
+      service.reconcileServerTaskMove({
+        id: 't-0',
+        title: 'T0',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      // No throws; buckets remain cleared by leaveBoard.
+      expect(service.tasksByColumnId()).toEqual({});
+    });
+  });
+
+  describe('Echo idempotency with onTaskMoved (issue #47 ↔ #46)', () => {
+    it('optimistic move + reconcile + echoed TaskMoved leaves the task in exactly one place', () => {
+      service.enterBoard(PROJECT_ID);
+      for (const [id, order] of [
+        ['col-A', 1],
+        ['col-B', 2]
+      ] as const) {
+        signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+          id,
+          name: id,
+          colorCode: null,
+          columnOrder: order,
+          projectId: PROJECT_ID,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 'T',
+        title: 'The task',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-A',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+
+      // Optimistic drag from col-A order 0 to col-B order 0.
+      const token = service.applyOptimisticTaskMove('T', 'col-A', 0, 'col-B', 0);
+      expect(token).not.toBeNull();
+
+      // Server response (reconcile).
+      service.reconcileServerTaskMove({
+        id: 'T',
+        title: 'The task',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-B',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+
+      // Echo broadcast lands after.
+      signalRMock.emit<TaskMovedEvent>(REALTIME_EVENT.TaskMoved, {
+        taskId: 'T',
+        oldColumnId: 'col-A',
+        newColumnId: 'col-B',
+        oldTaskOrder: 0,
+        newTaskOrder: 0,
+        task: {
+          id: 'T',
+          title: 'The task',
+          content: null,
+          taskOrder: 0,
+          columnId: 'col-B',
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        }
+      });
+
+      const buckets = service.tasksByColumnId();
+      expect(buckets['col-A']?.filter(t => t.id === 'T') ?? []).toEqual([]);
+      expect(buckets['col-B']?.filter(t => t.id === 'T') ?? []).toHaveLength(1);
     });
   });
 

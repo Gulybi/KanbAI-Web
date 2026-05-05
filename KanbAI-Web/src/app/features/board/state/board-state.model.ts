@@ -57,3 +57,19 @@ export const INITIAL_BOARD_STATE: BoardState = {
   columns: [],
   tasksByColumnId: {}
 };
+
+/**
+ * Rollback snapshot returned by `applyOptimisticTaskMove`. Held by the
+ * caller (BoardPageComponent) until the HTTP PUT resolves. Opaque to
+ * the UI — never rendered, never serialised.
+ */
+export interface OptimisticMoveToken {
+  /** Project this token applies to — checked on rollback. */
+  projectId: string;
+  fromColumnId: string;
+  toColumnId: string;
+  /** Pre-move bucket for the source column (already sorted). */
+  fromBucket: BoardTask[];
+  /** Pre-move bucket for the destination column (already sorted). */
+  toBucket: BoardTask[];
+}

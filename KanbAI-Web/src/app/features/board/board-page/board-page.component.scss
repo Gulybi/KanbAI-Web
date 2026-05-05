@@ -1,31 +1,201 @@
 @use 'src/styles/variables/colors' as *;
 @use 'src/styles/variables/spacing' as *;
 @use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
 @use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/layout' as *;
+@use 'src/styles/variables/breakpoints' as *;
 
-// Guard-evaluating skeleton — reserved for the future rehydration issue.
-// #27 does NOT wire this to the template; the styling is defined now so
-// that the follow-up can drop it in without re-opening the design.
-.board-page__guard-skeleton {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 300px;
-  gap: $space-lg;
-  padding: $space-lg;
+:host {
+  display: block;
+  background: $bg-main;
+  min-height: 100%;
+  font-family: $font-family-base;
+  color: $text-primary;
+}
+
+.board-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+// ---- Move-error strip (inline, sticky, auto-dismiss) --------------------
+// Placement justification: inline strip over toast because the failure is
+// about the board the user is actively looking at, and rollback already
+// happens in-place — the message belongs in the same visual field as the
+// card that just snapped back, not in a bottom-right toast that could be
+// missed.
+.board-page__move-error {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+
+  margin: 0 $content-padding;
+  margin-top: $space-md;
+
+  display: flex;
+  align-items: flex-start;
+  gap: $space-sm;
+
+  padding: $space-sm $space-md;
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-high;
+  border-radius: $radius-md;
+  box-shadow: $shadow-dropdown;
+
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  // Enter animation — slide down from -8px, fade in. Duration $motion-base.
+  animation: board-move-error-in $motion-base both;
+}
+
+.board-page__move-error-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: $status-high;
+}
+
+.board-page__move-error-text {
+  flex: 1 1 auto;
+}
+
+.board-page__move-error-dismiss {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: $space-xxs $space-xs;
+  margin: -$space-xxs -$space-xs -$space-xxs 0;
+  border-radius: $radius-sm;
+  color: $text-secondary;
+  font: inherit;
+  cursor: pointer;
+  transition: background $motion-fast, color $motion-fast;
+
+  // PM ruling 2026-05-04: on coarse pointers, the hit area must meet the
+  // 44 × 44 px touch-target rule from the KanbAI charter. Desktop keeps
+  // the compact affordance; touch gets a proper tap target without
+  // enlarging the visible glyph.
+  @media (pointer: coarse) {
+    min-width: 44px;
+    min-height: 44px;
+    padding: $space-sm;
+    margin: -$space-xs -$space-xs -$space-xs 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &:hover {
+    background: $bg-sidebar-light;
+    color: $text-primary;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+}
+
+@keyframes board-move-error-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+// ---- Column row (the actual kanban) -------------------------------------
+.board-page__columns {
+  flex: 1 1 auto;
+
+  display: flex;
+  align-items: flex-start;
+  gap: $kanban-column-gap;
+
+  padding: $space-xl $content-padding;
 
   overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+
+  // Thin, sage-tinted scrollbar for the horizontal kanban (progressive
+  // enhancement — Firefox + WebKit).
+  scrollbar-width: thin;
+  scrollbar-color: $border-light transparent;
+  &::-webkit-scrollbar { height: 8px; }
+  &::-webkit-scrollbar-thumb {
+    background: $border-light;
+    border-radius: $radius-pill;
+  }
+
+  > * {
+    scroll-snap-align: start;
+  }
+
+  @include respond-to('md') {
+    padding: $space-xl $content-padding;
+  }
 }
 
-.board-page__guard-skeleton-column {
-  height: 480px;
-  background: $bg-sidebar-light;
+// ---- Column-load error (block-level, occupies board main region) --------
+// Placement justification: the board has nothing else to show when the
+// column fetch fails, so a toast would be invisible against an empty
+// stage. A centered block message is the correct choice per the tech
+// spec ("block-level message in the board page's main region").
+.board-page__load-error {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $space-xxl $content-padding;
+}
+
+.board-page__load-error-panel {
+  max-width: 480px;
+  width: 100%;
+
+  padding: $space-xl;
+
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-high;
   border-radius: $radius-lg;
+  box-shadow: $shadow-card;
 
-  opacity: 0.6;
-  animation: guard-skeleton-pulse 1.4s ease-in-out infinite;
+  text-align: left;
 }
 
-@keyframes guard-skeleton-pulse {
-  0%, 100% { opacity: 0.6; }
-  50%      { opacity: 1;   }
+.board-page__load-error-heading {
+  margin: 0 0 $space-xs 0;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $text-primary;
 }
+
+.board-page__load-error-body {
+  margin: 0;
+  font-size: $font-size-md;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+}
+
+// ---- Visually-hidden aria-live region -----------------------------------
+.board-page__sr-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// ---- Reduced-motion fallback --------------------------------------------
+// Global _motion.scss already clamps transitions/animations to 0.01ms;
+// no per-component override needed. Instant state change still fires.

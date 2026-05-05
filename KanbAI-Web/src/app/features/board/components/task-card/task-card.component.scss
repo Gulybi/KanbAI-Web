@@ -1,0 +1,215 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+}
+
+.task-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: $space-xs $space-sm;
+
+  padding: $space-lg;
+
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+
+  cursor: grab;
+  user-select: none;
+
+  // Only animate transform and shadow — never width/height/top/left.
+  transition:
+    transform     $motion-fast,
+    box-shadow    $motion-fast,
+    border-color  $motion-fast;
+
+  &:hover {
+    box-shadow: $shadow-card-hover;
+    transform: translateY(-2px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  @include respond-to('md') {
+    padding: $space-lg;
+  }
+}
+
+// Default: on viewports < $bp-md, tighten padding.
+@media (max-width: ($bp-md - 1px)) {
+  .task-card {
+    padding: $space-md;
+  }
+}
+
+.task-card__title {
+  grid-column: 1 / -1;
+  margin: 0;
+
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  // Keep long titles readable — wrap, but never more than 3 lines before
+  // ellipsis (prevents a single long card stretching the column).
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+// ---- "Has content" affordance ------------------------------------------
+// Rendered when task.content is non-empty. A small dot + label; color
+// ($status-medium) is paired with the text "Notes" so it is never
+// color-only.
+.task-card__meta {
+  grid-column: 1;
+  grid-row: 2;
+
+  display: inline-flex;
+  align-items: center;
+  gap: $space-xxs;
+
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-tight;
+  color: $text-secondary;
+}
+
+.task-card__meta-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: $radius-pill;
+  background: $status-medium;
+  flex: 0 0 auto;
+}
+
+// ---- Touch drag handle --------------------------------------------------
+// On pointers that are coarse (touch), we expose an explicit grip so
+// the card body stays tappable/scrollable. Hidden otherwise.
+.task-card__handle {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+
+  display: none;
+  width: 44px;
+  height: 44px;
+  padding: $space-sm;
+
+  color: $text-tertiary;
+  background: transparent;
+  border: 0;
+  border-radius: $radius-sm;
+
+  cursor: grab;
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+}
+
+@media (pointer: coarse) {
+  .task-card__handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  // On touch, the card itself is NOT the drag handle — only the grip is.
+  // CDK's [cdkDragHandle] directive (applied on the grip in the template)
+  // enforces this.
+  .task-card {
+    cursor: default;
+  }
+}
+
+// ---- CDK drag states ----------------------------------------------------
+// The element that floats under the cursor during a drag. CDK clones the
+// source element; our styles make the clone feel "picked up".
+.cdk-drag-preview {
+  background: $bg-card-dragging;
+  border: 1px solid $border-light;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card-dragging;
+
+  // Subtle scale + rotation to signal detachment. Transform only — GPU
+  // friendly. Do NOT transition this property (CDK sets it imperatively).
+  transform: scale(1.02) rotate(1deg);
+
+  opacity: 0.98;
+}
+
+// The placeholder left in the source list while the drag is in flight.
+// Keeps the list's layout stable so neighbors don't pop.
+.cdk-drag-placeholder {
+  background: $bg-dropzone;
+  border: 2px dashed $border-dropzone;
+  border-radius: $radius-lg;
+  box-shadow: none;
+
+  // Hide the contents — the placeholder is a ghost slot, not a readable
+  // card. Height/width are already preserved by CDK.
+  > * { opacity: 0; }
+
+  // Fade the placeholder itself in softly as it takes over.
+  animation: task-card-placeholder-in $motion-fast both;
+}
+
+@keyframes task-card-placeholder-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+// Neighbor cards nudging aside during a drag.
+.cdk-drag-animating {
+  transition: transform $motion-base;
+}
+
+// The original list item while the user is actively dragging it (distinct
+// from .cdk-drag-preview which is the cursor-following clone).
+.cdk-drag-dragging {
+  // Prevents hover state flicker on the origin slot during the drag.
+  pointer-events: none;
+}
+
+// ---- Rolled-back shake --------------------------------------------------
+// Applied imperatively by the component when the server rejects a move
+// (e.g. class toggled by a signal that auto-clears after $motion-base).
+.task-card--rollback {
+  animation: task-card-rollback $motion-base both;
+}
+
+@keyframes task-card-rollback {
+  0%   { transform: translate3d(0, 0, 0);   }
+  25%  { transform: translate3d(-4px, 0, 0); }
+  50%  { transform: translate3d(4px, 0, 0);  }
+  75%  { transform: translate3d(-2px, 0, 0); }
+  100% { transform: translate3d(0, 0, 0);   }
+}
+
+// ---- Reduced motion ----------------------------------------------------
+// Global rule clamps animation/transition durations to 0.01ms — the
+// rollback shake collapses to an instant state change (no shake), which
+// is still distinguishable from "moved successfully" because the card's
+// position is different (rollback restores origin). The move-error strip
+// supplies the verbal confirmation. No per-component override needed.

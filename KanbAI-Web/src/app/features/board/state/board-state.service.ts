@@ -15,8 +15,10 @@ import {
   BoardColumn,
   BoardState,
   BoardTask,
-  INITIAL_BOARD_STATE
+  INITIAL_BOARD_STATE,
+  OptimisticMoveToken
 } from './board-state.model';
+import { TaskResponseDto } from '../models/task.model';
 
 /**
  * Board-scope state + realtime reconciler.
@@ -259,6 +261,211 @@ export class BoardStateService extends BaseStateService<BoardState> {
         [evt.newColumnId]: inserted
       }
     });
+  }
+
+  // ------------------- HTTP-driven mutations (issue #47) -------------------
+
+  /**
+   * Replace the column list for the current board. Called by
+   * `BoardPageComponent` after the initial `GET /api/column/project/{projectId}`.
+   *
+   * Idempotent w.r.t. concurrency: if the active project has already changed
+   * (e.g. user navigated away during the in-flight request), the call is a
+   * no-op — we key on `projectId` matching `currentProjectId` at mutation
+   * time to avoid planting columns from a stale board onto the new one.
+   *
+   * Does NOT touch `tasksByColumnId` for any column id still in the incoming
+   * list; buckets whose column is no longer present are dropped (defensive:
+   * avoids orphaned rendering).
+   */
+  setColumns(projectId: string, columns: BoardColumn[]): void {
+    if (this.getState().currentProjectId !== projectId) {
+      return;
+    }
+    const sortedColumns = [...columns].sort((a, b) => a.columnOrder - b.columnOrder);
+    const allowedIds = new Set(sortedColumns.map(c => c.id));
+    const currentBuckets = this.getState().tasksByColumnId;
+    const nextBuckets: Record<string, BoardTask[]> = {};
+    for (const [key, bucket] of Object.entries(currentBuckets)) {
+      if (allowedIds.has(key)) {
+        nextBuckets[key] = bucket;
+      }
+    }
+    this.setState({ columns: sortedColumns, tasksByColumnId: nextBuckets });
+  }
+
+  /**
+   * Apply a drag-and-drop move to local state BEFORE the HTTP PUT returns.
+   * The card appears in the new column at the new order on the next template
+   * tick; `taskOrder` is renumbered sequentially within both affected buckets
+   * so rendered ordering is self-consistent.
+   *
+   * Returns a rollback token (snapshots of both pre-move buckets) the caller
+   * keeps until the HTTP call resolves — or `null` if the move is rejected
+   * by a pre-condition (project changed, task not in source bucket, or a
+   * no-op drag to the same position).
+   */
+  applyOptimisticTaskMove(
+    taskId: string,
+    fromColumnId: string,
+    fromOrder: number,
+    toColumnId: string,
+    toOrder: number
+  ): OptimisticMoveToken | null {
+    const projectId = this.getState().currentProjectId;
+    if (projectId === null) {
+      return null;
+    }
+    if (fromColumnId === toColumnId && fromOrder === toOrder) {
+      return null;
+    }
+    const buckets = this.getState().tasksByColumnId;
+    const fromBucket = buckets[fromColumnId] ?? [];
+    const movedTask = fromBucket.find(t => t.id === taskId);
+    if (!movedTask) {
+      return null;
+    }
+    const toBucket = fromColumnId === toColumnId ? fromBucket : buckets[toColumnId] ?? [];
+
+    // Snapshots captured BEFORE mutation — opaque to the UI and handed to
+    // the caller for later rollback.
+    const fromSnapshot = [...fromBucket];
+    const toSnapshot = [...toBucket];
+
+    const token: OptimisticMoveToken = {
+      projectId,
+      fromColumnId,
+      toColumnId,
+      fromBucket: fromSnapshot,
+      toBucket: toSnapshot
+    };
+
+    if (fromColumnId === toColumnId) {
+      // Within-column reorder: splice out, splice in, then renumber.
+      const reordered = [...fromBucket];
+      const actualFromIndex = reordered.findIndex(t => t.id === taskId);
+      reordered.splice(actualFromIndex, 1);
+      const clampedToOrder = Math.max(0, Math.min(toOrder, reordered.length));
+      reordered.splice(clampedToOrder, 0, { ...movedTask });
+      const renumbered = reordered.map((t, index) => ({
+        ...t,
+        taskOrder: index,
+        columnId: toColumnId
+      }));
+      this.setState({
+        tasksByColumnId: {
+          ...buckets,
+          [fromColumnId]: renumbered
+        }
+      });
+    } else {
+      // Cross-column move: remove from source, insert into destination.
+      const newFromBucket = fromBucket
+        .filter(t => t.id !== taskId)
+        .map((t, index) => ({ ...t, taskOrder: index }));
+      const newToBucket = [...toBucket];
+      const clampedToOrder = Math.max(0, Math.min(toOrder, newToBucket.length));
+      newToBucket.splice(clampedToOrder, 0, {
+        ...movedTask,
+        columnId: toColumnId
+      });
+      const renumberedTo = newToBucket.map((t, index) => ({
+        ...t,
+        taskOrder: index,
+        columnId: toColumnId
+      }));
+      this.setState({
+        tasksByColumnId: {
+          ...buckets,
+          [fromColumnId]: newFromBucket,
+          [toColumnId]: renumberedTo
+        }
+      });
+    }
+
+    return token;
+  }
+
+  /**
+   * Undo an optimistic move when the server rejects it. Restores the
+   * exact bucket contents captured in the token. Silently no-ops if
+   * `currentProjectId` has changed since the token was issued (the user
+   * navigated away — nothing to restore).
+   */
+  rollbackOptimisticTaskMove(token: OptimisticMoveToken): void {
+    if (this.getState().currentProjectId !== token.projectId) {
+      return;
+    }
+    const buckets = this.getState().tasksByColumnId;
+    if (token.fromColumnId === token.toColumnId) {
+      this.setState({
+        tasksByColumnId: {
+          ...buckets,
+          [token.fromColumnId]: token.fromBucket
+        }
+      });
+      return;
+    }
+    this.setState({
+      tasksByColumnId: {
+        ...buckets,
+        [token.fromColumnId]: token.fromBucket,
+        [token.toColumnId]: token.toBucket
+      }
+    });
+  }
+
+  /**
+   * Fold the server-authoritative `TaskResponseDto` back into state after a
+   * successful move. If the server normalised `taskOrder`, the target bucket
+   * re-sorts accordingly; otherwise the method is a cheap idempotent no-op.
+   *
+   * Safe to call with a DTO whose column is no longer known to local state
+   * (a `ColumnDeleted` event could have arrived between drop and response) —
+   * the call is then a no-op.
+   */
+  reconcileServerTaskMove(response: TaskResponseDto): void {
+    if (this.getState().currentProjectId === null) {
+      return;
+    }
+    const columnKnown = this.getState().columns.some(c => c.id === response.columnId);
+    if (!columnKnown) {
+      return;
+    }
+    const buckets = this.getState().tasksByColumnId;
+
+    // Find where the task currently lives (may be anywhere — if the user
+    // performed a cross-column move it's already in `response.columnId`).
+    const ownerEntry = Object.entries(buckets).find(([, bucket]) =>
+      bucket.some(t => t.id === response.id)
+    );
+
+    const reconciledTask: BoardTask = {
+      id: response.id,
+      title: response.title,
+      content: response.content,
+      taskOrder: response.taskOrder,
+      columnId: response.columnId,
+      assignedId: response.assignedId
+    };
+
+    const nextBuckets: Record<string, BoardTask[]> = { ...buckets };
+
+    if (ownerEntry && ownerEntry[0] !== response.columnId) {
+      // Task is sitting in a different bucket than the server says it
+      // should — move it to the server-truth column.
+      const [ownerColumnId, ownerBucket] = ownerEntry;
+      nextBuckets[ownerColumnId] = ownerBucket
+        .filter(t => t.id !== response.id)
+        .map((t, index) => ({ ...t, taskOrder: index }));
+    }
+
+    const destBucket = nextBuckets[response.columnId] ?? [];
+    const deduped = destBucket.filter(t => t.id !== response.id);
+    const merged = [...deduped, reconciledTask].sort((a, b) => a.taskOrder - b.taskOrder);
+    nextBuckets[response.columnId] = merged;
+
+    this.setState({ tasksByColumnId: nextBuckets });
   }
 
   private teardownSubscriptions(): void {

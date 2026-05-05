@@ -1,4 +1,64 @@
-<div class="p-8 bg-white min-h-screen">
-  <h1 class="text-3xl font-bold text-gray-800">Board Page</h1>
-  <p class="mt-4 text-gray-600">Kanban board UI will be implemented here.</p>
+<div class="board-page">
+  @if (moveError()) {
+    <div
+      class="board-page__move-error"
+      role="status"
+      aria-live="polite"
+    >
+      <svg
+        class="board-page__move-error-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M8 1.333 14.667 12.8H1.333L8 1.333Zm0 4.8v3.2h.667v-3.2H8Zm-.333 4.534v.666h1v-.666h-1Z" />
+      </svg>
+      <span class="board-page__move-error-text">{{ moveError() }}</span>
+      <button
+        type="button"
+        class="board-page__move-error-dismiss"
+        aria-label="Dismiss move error"
+        (click)="dismissMoveError()"
+      >
+        Dismiss
+      </button>
+    </div>
+  }
+
+  <div
+    class="board-page__sr-announce"
+    role="status"
+    aria-live="polite"
+  >
+    {{ dragAnnouncement() }}
+  </div>
+
+  @if (columnLoadError() && columns().length === 0) {
+    <div class="board-page__load-error">
+      <div
+        class="board-page__load-error-panel"
+        role="alert"
+      >
+        <h2 class="board-page__load-error-heading">We couldn&rsquo;t load this board</h2>
+        <p class="board-page__load-error-body">{{ columnLoadError() }}</p>
+      </div>
+    </div>
+  } @else {
+    <div class="board-page__columns" cdkDropListGroup>
+      @for (column of columns(); track column.id) {
+        <app-board-column
+          [column]="column"
+          [tasks]="tasksByColumnId()[column.id] ?? []"
+          [connectedDropListIds]="dropListIds()"
+          [rolledBackTaskId]="rolledBackTaskId()"
+          [rolledBackTrigger]="rolledBackTrigger()"
+          (taskDropped)="handleTaskDropped(column.id, $event)"
+        />
+      }
+    </div>
+  }
 </div>
