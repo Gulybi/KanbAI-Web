@@ -35,7 +35,8 @@
       "Bash(sed -n '/private onTaskMoved/,/^  }$/p' /tmp/before.ts)",
       "Bash(sed -n '/private onTaskMoved/,/^  }$/p' src/app/features/board/state/board-state.service.ts)",
       "Bash(tee /tmp/vitest-full.log)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "WebFetch(domain:github.com)"
     ],
     "additionalDirectories": [
       "C:\\temp\\KanbAI-Web\\docs\\handoffs",

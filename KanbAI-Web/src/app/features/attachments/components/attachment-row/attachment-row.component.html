@@ -1,0 +1,148 @@
+<div
+  class="attachment-row"
+  [class.attachment-row--downloading]="isDownloading()"
+  [class.attachment-row--error]="isError()"
+>
+  <div class="attachment-row__header">
+    <svg
+      class="attachment-row__icon"
+      [attr.data-category]="iconCategory()"
+      xmlns="http://www.w3.org/2000/svg"
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      @switch (iconCategory()) {
+        @case ('image') {
+          <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+          <circle cx="7" cy="8" r="1" fill="currentColor" />
+          <path d="M4 14 8 10 12 13 16 9" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+        }
+        @case ('pdf') {
+          <path d="M5 2h7l3 3v13H5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+          <path d="M12 2v3h3" stroke="currentColor" stroke-width="1.5" />
+          <text x="10" y="15" font-size="4" font-weight="700" fill="currentColor" text-anchor="middle">PDF</text>
+        }
+        @case ('word') {
+          <path d="M5 2h7l3 3v13H5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+          <path d="M12 2v3h3" stroke="currentColor" stroke-width="1.5" />
+          <text x="10" y="15" font-size="4" font-weight="700" fill="currentColor" text-anchor="middle">W</text>
+        }
+        @case ('excel') {
+          <path d="M5 2h7l3 3v13H5z" stroke="#7A7A7A" stroke-width="1" fill="currentColor" fill-opacity="0.85" stroke-linejoin="round" />
+          <path d="M12 2v3h3" stroke="#7A7A7A" stroke-width="1" />
+          <path d="M7 11h8M7 14h8M10 8v8" stroke="#7A7A7A" stroke-width="0.75" />
+        }
+        @case ('text') {
+          <path d="M5 2h7l3 3v13H5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+          <path d="M12 2v3h3" stroke="currentColor" stroke-width="1.5" />
+          <path d="M7 10h6M7 12.5h6M7 15h4" stroke="currentColor" stroke-width="1" />
+        }
+        @default {
+          <path d="M5 2h7l3 3v13H5z" stroke="#7A7A7A" stroke-width="1" fill="currentColor" fill-opacity="0.85" stroke-linejoin="round" />
+          <path d="M12 2v3h3" stroke="#7A7A7A" stroke-width="1" />
+        }
+      }
+    </svg>
+
+    <div class="attachment-row__file-meta">
+      <span
+        class="attachment-row__filename"
+        [title]="attachment().fileName"
+      >{{ attachment().fileName }}</span>
+      <span class="attachment-row__meta">
+        <span class="attachment-row__size">{{ fileSizeDisplay() }}</span>
+        <span class="attachment-row__meta-sep" aria-hidden="true">·</span>
+        <time
+          class="attachment-row__date"
+          [attr.datetime]="attachment().createdAt"
+          [title]="absoluteDateLabel()"
+        >{{ relativeDateLabel() }}</time>
+      </span>
+    </div>
+
+    <button
+      #downloadButton
+      type="button"
+      class="attachment-row__download"
+      [attr.aria-label]="downloadAriaLabel()"
+      [disabled]="isDownloading()"
+      [attr.aria-busy]="isDownloading() ? 'true' : null"
+      (click)="handleDownloadClick()"
+    >
+      @if (isDownloading()) {
+        <svg
+          class="attachment-row__download-spinner"
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.25" />
+          <path d="M12 7a5 5 0 0 0-5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+      } @else {
+        <svg
+          class="attachment-row__download-icon"
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M7 2v7" />
+          <path d="M4 6l3 3 3-3" />
+          <path d="M2 11h10" />
+        </svg>
+      }
+    </button>
+  </div>
+
+  @if (isError()) {
+    <div
+      class="attachment-row__error"
+      role="alert"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <svg
+        class="attachment-row__error-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <circle cx="7" cy="7" r="5.5" />
+        <line x1="7" y1="4" x2="7" y2="8" />
+        <line x1="7" y1="10" x2="7" y2="10.5" />
+      </svg>
+      <p class="attachment-row__error-message">{{ downloadState().error?.userMessage }}</p>
+      @if (downloadState().error?.retryable) {
+        <button
+          type="button"
+          class="attachment-row__retry"
+          (click)="handleRetryClick()"
+        >Retry</button>
+      }
+    </div>
+  }
+</div>

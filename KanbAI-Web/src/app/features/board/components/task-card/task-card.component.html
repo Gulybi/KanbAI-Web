@@ -35,10 +35,35 @@
     </svg>
   </button>
   <h3 class="task-card__title">{{ task().title }}</h3>
-  @if (task().content) {
-    <span class="task-card__meta">
-      <span class="task-card__meta-dot" aria-hidden="true"></span>
-      Notes
-    </span>
+  @if (task().content || attachmentCount() >= 1) {
+    <div class="task-card__meta-row" aria-hidden="true">
+      @if (task().content) {
+        <span class="task-card__meta">
+          <span class="task-card__meta-dot" aria-hidden="true"></span>
+          Notes
+        </span>
+      }
+      @if (attachmentCount() >= 1) {
+        <span class="task-card__attachment-meta">
+          <svg
+            class="task-card__attachment-icon"
+            xmlns="http://www.w3.org/2000/svg"
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M10.5 4.5 L5.5 9.5 a2.121 2.121 0 1 0 3 3 L13 8 a3.535 3.535 0 1 0 -5 -5 L3.5 7.5" />
+          </svg>
+          <span class="task-card__attachment-count">{{ attachmentCount() }}</span>
+        </span>
+      }
+    </div>
   }
 </article>

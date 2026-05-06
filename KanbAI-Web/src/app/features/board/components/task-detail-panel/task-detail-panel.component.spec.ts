@@ -40,10 +40,12 @@ function makeUpload(partial?: Partial<AttachmentUpload>): AttachmentUpload {
 interface MockAttachmentsState {
   uploadsByTaskId: WritableSignal<Record<string, AttachmentUpload[]>>;
   completedByTaskId: WritableSignal<Record<string, unknown[]>>;
+  completedFetchByTaskId: WritableSignal<Record<string, unknown>>;
   cancel: ReturnType<typeof vi.fn>;
   retry: ReturnType<typeof vi.fn>;
   dismiss: ReturnType<typeof vi.fn>;
   startUpload: ReturnType<typeof vi.fn>;
+  hydrateCompletedForTask: ReturnType<typeof vi.fn>;
   uploadsForTask: (taskId: string) => WritableSignal<AttachmentUpload[]>;
   isUploadingForTask: (taskId: string) => WritableSignal<boolean>;
 }
@@ -51,13 +53,16 @@ interface MockAttachmentsState {
 function createMockAttachmentsState(): MockAttachmentsState {
   const uploadsByTaskId = signal<Record<string, AttachmentUpload[]>>({});
   const completedByTaskId = signal<Record<string, unknown[]>>({});
+  const completedFetchByTaskId = signal<Record<string, unknown>>({});
   return {
     uploadsByTaskId,
     completedByTaskId,
+    completedFetchByTaskId,
     cancel: vi.fn(),
     retry: vi.fn(),
     dismiss: vi.fn(),
     startUpload: vi.fn(),
+    hydrateCompletedForTask: vi.fn(),
     uploadsForTask: (taskId: string) => {
       const sig = signal<AttachmentUpload[]>([]);
       sig.set(uploadsByTaskId()[taskId] ?? []);
@@ -217,6 +222,80 @@ describe('TaskDetailPanelComponent', () => {
       fixture.detectChanges();
 
       expect(component.resolvedDisabledReason()).toBe('custom');
+    });
+  });
+
+  describe('attachment list (#51)', () => {
+    it('calls hydrateCompletedForTask on initial render for the open task', () => {
+      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-1');
+    });
+
+    it('re-calls hydrateCompletedForTask when the task input changes to a new id', () => {
+      mockState.hydrateCompletedForTask.mockClear();
+      fixture.componentRef.setInput('task', makeTask({ id: 't-2' }));
+      fixture.detectChanges();
+      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-2');
+    });
+
+    it('renders an <app-attachment-list> inside the attachments section', () => {
+      const list = fixture.debugElement.query(By.css('app-attachment-list'));
+      expect(list).toBeTruthy();
+    });
+
+    it('retry of the list fetch calls hydrateCompletedForTask again', () => {
+      mockState.hydrateCompletedForTask.mockClear();
+      component.handleRetryListFetch();
+      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-1');
+    });
+
+    it('does not render the section divider while idle + empty', () => {
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__section-divider'))
+      ).toBeNull();
+    });
+
+    it('renders the section divider once the list is loading', () => {
+      mockState.completedFetchByTaskId.set({
+        't-1': { phase: 'loading', error: null }
+      });
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__section-divider'))
+      ).toBeTruthy();
+    });
+
+    it('renders the section divider once a completed attachment is known', () => {
+      mockState.completedByTaskId.set({ 't-1': [{ id: 'a-1' }] });
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__section-divider'))
+      ).toBeTruthy();
+    });
+
+    it('section divider has aria-hidden="true"', () => {
+      mockState.completedFetchByTaskId.set({
+        't-1': { phase: 'loading', error: null }
+      });
+      fixture.detectChanges();
+      const hr = fixture.debugElement.query(
+        By.css('.task-detail-panel__section-divider')
+      ).nativeElement as HTMLElement;
+      expect(hr.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('wires completedAttachments() and listFetchState() through to <app-attachment-list>', () => {
+      mockState.completedByTaskId.set({
+        't-1': [
+          { id: 'a-1', fileName: 'x.pdf' },
+          { id: 'a-2', fileName: 'y.pdf' }
+        ]
+      });
+      mockState.completedFetchByTaskId.set({
+        't-1': { phase: 'ready', error: null }
+      });
+      fixture.detectChanges();
+      expect(component.completedAttachments().length).toBe(2);
+      expect(component.listFetchState().phase).toBe('ready');
     });
   });
 

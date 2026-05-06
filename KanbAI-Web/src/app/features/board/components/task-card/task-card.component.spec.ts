@@ -1,9 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { WritableSignal, signal } from '@angular/core';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 import { TaskCardComponent } from './task-card.component';
 import { BoardTask } from '../../state/board-state.model';
+import { AttachmentsStateService } from '../../../attachments/state/attachments-state.service';
+import { AssetResponseDto } from '../../../attachments/models/attachment.model';
 
 function makeTask(partial?: Partial<BoardTask>): BoardTask {
   return {
@@ -17,12 +20,36 @@ function makeTask(partial?: Partial<BoardTask>): BoardTask {
   };
 }
 
+function makeAsset(id: string): AssetResponseDto {
+  return {
+    id,
+    fileName: `${id}.pdf`,
+    storageKey: 'k',
+    thumbnailKey: null,
+    mimeType: 'application/pdf',
+    fileSize: 1024,
+    processingStatus: 2,
+    kanbanTaskId: 't-1',
+    createdAt: '2026-05-01T00:00:00Z',
+    updatedAt: '2026-05-01T00:00:00Z'
+  };
+}
+
 describe('TaskCardComponent', () => {
   let fixture: ComponentFixture<TaskCardComponent>;
+  let completedByTaskId: WritableSignal<Record<string, AssetResponseDto[]>>;
 
   beforeEach(async () => {
+    completedByTaskId = signal<Record<string, AssetResponseDto[]>>({});
+
     await TestBed.configureTestingModule({
-      imports: [TaskCardComponent]
+      imports: [TaskCardComponent],
+      providers: [
+        {
+          provide: AttachmentsStateService,
+          useValue: { completedByTaskId }
+        }
+      ]
     }).compileComponents();
 
     fixture = TestBed.createComponent(TaskCardComponent);
@@ -191,6 +218,130 @@ describe('TaskCardComponent', () => {
 
       const card = fixture.debugElement.query(By.css('.task-card'));
       expect(card.nativeElement.classList.contains('task-card--rollback')).toBe(true);
+    });
+  });
+
+  describe('attachment indicator (#51)', () => {
+    it('does not render the indicator when attachmentCount is 0', () => {
+      const indicator = fixture.debugElement.query(
+        By.css('.task-card__attachment-meta')
+      );
+      expect(indicator).toBeNull();
+    });
+
+    it('leaves the accessibleName untouched when attachmentCount is 0', () => {
+      const card = fixture.debugElement.query(By.css('.task-card'));
+      expect(card.nativeElement.getAttribute('aria-label')).toBe(
+        'Design login page'
+      );
+    });
+
+    it('renders the indicator when attachmentCount is 1 and appends "(1 attachment)" (singular)', () => {
+      completedByTaskId.set({ 't-1': [makeAsset('a-1')] });
+      fixture.detectChanges();
+
+      const indicator = fixture.debugElement.query(
+        By.css('.task-card__attachment-meta')
+      );
+      expect(indicator).toBeTruthy();
+      const count = fixture.debugElement.query(
+        By.css('.task-card__attachment-count')
+      ).nativeElement as HTMLElement;
+      expect(count.textContent?.trim()).toBe('1');
+
+      const card = fixture.debugElement.query(By.css('.task-card'));
+      expect(card.nativeElement.getAttribute('aria-label')).toBe(
+        'Design login page (1 attachment)'
+      );
+    });
+
+    it('pluralises on attachmentCount > 1', () => {
+      completedByTaskId.set({
+        't-1': [makeAsset('a-1'), makeAsset('a-2'), makeAsset('a-3')]
+      });
+      fixture.detectChanges();
+      const card = fixture.debugElement.query(By.css('.task-card'));
+      expect(card.nativeElement.getAttribute('aria-label')).toBe(
+        'Design login page (3 attachments)'
+      );
+    });
+
+    it('combines notes + attachments suffix in the accessibleName', () => {
+      fixture.componentRef.setInput('task', makeTask({ content: 'x' }));
+      completedByTaskId.set({
+        't-1': [makeAsset('a-1'), makeAsset('a-2')]
+      });
+      fixture.detectChanges();
+      const card = fixture.debugElement.query(By.css('.task-card'));
+      expect(card.nativeElement.getAttribute('aria-label')).toBe(
+        'Design login page (has notes) (2 attachments)'
+      );
+    });
+
+    it('marks the meta row aria-hidden so AT does not double-announce', () => {
+      completedByTaskId.set({ 't-1': [makeAsset('a-1')] });
+      fixture.detectChanges();
+      const row = fixture.debugElement.query(By.css('.task-card__meta-row'))
+        .nativeElement as HTMLElement;
+      expect(row.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('updates the count on next tick when the state slice grows', () => {
+      completedByTaskId.set({ 't-1': [makeAsset('a-1'), makeAsset('a-2')] });
+      fixture.detectChanges();
+      completedByTaskId.set({
+        't-1': [makeAsset('a-1'), makeAsset('a-2'), makeAsset('a-3')]
+      });
+      fixture.detectChanges();
+      const count = fixture.debugElement.query(
+        By.css('.task-card__attachment-count')
+      ).nativeElement as HTMLElement;
+      expect(count.textContent?.trim()).toBe('3');
+    });
+
+    it('indicator is NOT a button, link, or focusable element (decorative only, Q5)', () => {
+      completedByTaskId.set({ 't-1': [makeAsset('a-1')] });
+      fixture.detectChanges();
+      const indicator = fixture.debugElement.query(
+        By.css('.task-card__attachment-meta')
+      ).nativeElement as HTMLElement;
+      expect(indicator.tagName.toLowerCase()).toBe('span');
+      expect(indicator.getAttribute('role')).toBeNull();
+      expect(indicator.getAttribute('tabindex')).toBeNull();
+      expect(indicator.getAttribute('href')).toBeNull();
+      // No click handler would be visible in the DOM — we assert by tag.
+    });
+
+    it('paperclip icon is aria-hidden="true"', () => {
+      completedByTaskId.set({ 't-1': [makeAsset('a-1')] });
+      fixture.detectChanges();
+      const icon = fixture.debugElement.query(
+        By.css('.task-card__attachment-icon')
+      ).nativeElement as HTMLElement;
+      expect(icon.getAttribute('aria-hidden')).toBe('true');
+      expect(icon.getAttribute('focusable')).toBe('false');
+    });
+
+    it('removes the indicator from the DOM when the count drops back to 0 (live shrink)', () => {
+      completedByTaskId.set({ 't-1': [makeAsset('a-1')] });
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement.query(By.css('.task-card__attachment-meta'))
+      ).toBeTruthy();
+
+      completedByTaskId.set({ 't-1': [] });
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement.query(By.css('.task-card__attachment-meta'))
+      ).toBeNull();
+    });
+
+    it('indicator is absent when the state slice is undefined for this task', () => {
+      completedByTaskId.set({ 'some-other-task': [makeAsset('x')] });
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement.query(By.css('.task-card__attachment-meta'))
+      ).toBeNull();
     });
   });
 });

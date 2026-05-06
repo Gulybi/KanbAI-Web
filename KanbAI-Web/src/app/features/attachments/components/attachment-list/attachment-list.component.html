@@ -1,0 +1,72 @@
+<section class="attachment-list" aria-label="Attachments">
+  <header class="attachment-list__header">
+    <h4 class="attachment-list__label">
+      Attachments
+      @if (countLabel()) {
+        <span class="attachment-list__count" aria-hidden="true">{{ countLabel() }}</span>
+      }
+    </h4>
+  </header>
+
+  @if (showErrorBanner()) {
+    <div
+      class="attachment-list__error"
+      [class.attachment-list__error--retryable]="isRetryableError()"
+      role="alert"
+    >
+      <svg
+        class="attachment-list__error-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <circle cx="8" cy="8" r="6.5" />
+        <line x1="8" y1="5" x2="8" y2="9" />
+        <line x1="8" y1="11" x2="8" y2="11.5" />
+      </svg>
+      <p class="attachment-list__error-message">{{ fetchState().error?.userMessage }}</p>
+      @if (isRetryableError()) {
+        <button
+          type="button"
+          class="attachment-list__error-retry"
+          (click)="handleRetryClick()"
+        >Retry</button>
+      }
+    </div>
+  }
+
+  @if (showLoadingSkeleton()) {
+    <ul class="attachment-list__skeleton" aria-busy="true" aria-hidden="true">
+      <li class="attachment-list__skeleton-row"></li>
+      <li class="attachment-list__skeleton-row"></li>
+      <li class="attachment-list__skeleton-row"></li>
+    </ul>
+  }
+
+  @if (showEmptyState()) {
+    <p class="attachment-list__empty">No attachments yet.</p>
+  }
+
+  @if (attachments().length > 0) {
+    <ul
+      class="attachment-list__rows"
+      role="list"
+      aria-live="polite"
+      aria-relevant="additions"
+    >
+      @for (attachment of attachments(); track attachment.id) {
+        <li class="attachment-list__row-slot">
+          <app-attachment-row [attachment]="attachment" />
+        </li>
+      }
+    </ul>
+  }
+</section>

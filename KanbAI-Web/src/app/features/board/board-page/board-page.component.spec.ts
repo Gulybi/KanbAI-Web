@@ -45,8 +45,10 @@ interface AttachmentsStateMock {
   cancel: ReturnType<typeof vi.fn>;
   retry: ReturnType<typeof vi.fn>;
   dismiss: ReturnType<typeof vi.fn>;
+  hydrateCompletedForTask: ReturnType<typeof vi.fn>;
   uploadsByTaskId: WritableSignal<Record<string, unknown[]>>;
   completedByTaskId: WritableSignal<Record<string, unknown[]>>;
+  completedFetchByTaskId: WritableSignal<Record<string, unknown>>;
   uploadsForTask: (taskId: string) => WritableSignal<unknown[]>;
   isUploadingForTask: (taskId: string) => WritableSignal<boolean>;
 }
@@ -54,13 +56,16 @@ interface AttachmentsStateMock {
 function createMockAttachmentsState(): AttachmentsStateMock {
   const uploadsByTaskId = signal<Record<string, unknown[]>>({});
   const completedByTaskId = signal<Record<string, unknown[]>>({});
+  const completedFetchByTaskId = signal<Record<string, unknown>>({});
   return {
     startUpload: vi.fn(),
     cancel: vi.fn(),
     retry: vi.fn(),
     dismiss: vi.fn(),
+    hydrateCompletedForTask: vi.fn(),
     uploadsByTaskId,
     completedByTaskId,
+    completedFetchByTaskId,
     uploadsForTask: () => signal<unknown[]>([]),
     isUploadingForTask: () => signal<boolean>(false)
   };

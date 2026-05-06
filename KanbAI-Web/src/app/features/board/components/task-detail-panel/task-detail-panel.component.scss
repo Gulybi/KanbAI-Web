@@ -179,6 +179,12 @@
   gap: $space-xs;
 }
 
+.task-detail-panel__section-divider {
+  margin: $space-md 0 0 0;
+  border: 0;
+  border-top: 1px solid $border-light;
+}
+
 // Visually-hidden shared live region — one per panel instance, not per
 // row, so AT does not receive duplicated announcements.
 .task-detail-panel__upload-live {
