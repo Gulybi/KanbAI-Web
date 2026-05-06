@@ -34,7 +34,8 @@
       "Bash(git show *)",
       "Bash(sed -n '/private onTaskMoved/,/^  }$/p' /tmp/before.ts)",
       "Bash(sed -n '/private onTaskMoved/,/^  }$/p' src/app/features/board/state/board-state.service.ts)",
-      "Bash(tee /tmp/vitest-full.log)"
+      "Bash(tee /tmp/vitest-full.log)",
+      "Bash(git stash *)"
     ],
     "additionalDirectories": [
       "C:\\temp\\KanbAI-Web\\docs\\handoffs",

@@ -11,6 +11,7 @@ import { BoardPageComponent } from './board-page.component';
 import { BoardStateService } from '../state/board-state.service';
 import { ColumnsApiService } from '../services/columns-api.service';
 import { TasksApiService } from '../services/tasks-api.service';
+import { AttachmentsStateService } from '../../attachments/state/attachments-state.service';
 import {
   BoardColumn,
   BoardTask,
@@ -37,6 +38,32 @@ interface ColumnsApiMock {
 
 interface TasksApiMock {
   moveTask: ReturnType<typeof vi.fn>;
+}
+
+interface AttachmentsStateMock {
+  startUpload: ReturnType<typeof vi.fn>;
+  cancel: ReturnType<typeof vi.fn>;
+  retry: ReturnType<typeof vi.fn>;
+  dismiss: ReturnType<typeof vi.fn>;
+  uploadsByTaskId: WritableSignal<Record<string, unknown[]>>;
+  completedByTaskId: WritableSignal<Record<string, unknown[]>>;
+  uploadsForTask: (taskId: string) => WritableSignal<unknown[]>;
+  isUploadingForTask: (taskId: string) => WritableSignal<boolean>;
+}
+
+function createMockAttachmentsState(): AttachmentsStateMock {
+  const uploadsByTaskId = signal<Record<string, unknown[]>>({});
+  const completedByTaskId = signal<Record<string, unknown[]>>({});
+  return {
+    startUpload: vi.fn(),
+    cancel: vi.fn(),
+    retry: vi.fn(),
+    dismiss: vi.fn(),
+    uploadsByTaskId,
+    completedByTaskId,
+    uploadsForTask: () => signal<unknown[]>([]),
+    isUploadingForTask: () => signal<boolean>(false)
+  };
 }
 
 function createMockBoardState(): BoardStateMock {
@@ -98,6 +125,7 @@ interface MountOptions {
 async function mount(options: MountOptions = {}): Promise<{
   fixture: ComponentFixture<BoardPageComponent>;
   component: BoardPageComponent;
+  attachmentsState: AttachmentsStateMock;
   boardState: BoardStateMock;
   columnsApi: ColumnsApiMock;
   tasksApi: TasksApiMock;
@@ -118,6 +146,7 @@ async function mount(options: MountOptions = {}): Promise<{
         updatedAt: ''
       })
   );
+  const attachmentsState = createMockAttachmentsState();
 
   await TestBed.configureTestingModule({
     imports: [BoardPageComponent],
@@ -130,7 +159,8 @@ async function mount(options: MountOptions = {}): Promise<{
       },
       { provide: BoardStateService, useValue: boardState },
       { provide: ColumnsApiService, useValue: columnsApi },
-      { provide: TasksApiService, useValue: tasksApi }
+      { provide: TasksApiService, useValue: tasksApi },
+      { provide: AttachmentsStateService, useValue: attachmentsState }
     ]
   }).compileComponents();
 
@@ -138,6 +168,7 @@ async function mount(options: MountOptions = {}): Promise<{
   return {
     fixture,
     component: fixture.componentInstance,
+    attachmentsState,
     boardState,
     columnsApi,
     tasksApi
@@ -525,17 +556,18 @@ describe('BoardPageComponent', () => {
       expect(panel).toBeNull();
     });
 
-    it('handleAttachmentSelected is a no-op in #49 (no state mutation, no HTTP call)', async () => {
-      const { fixture, component, tasksApi } = await mount();
+    it('handleAttachmentSelected dispatches into attachmentsState.startUpload (#50)', async () => {
+      const { fixture, component, attachmentsState, tasksApi } = await mount();
       fixture.detectChanges();
 
-      component.handleAttachmentSelected({
+      const event = {
         file: new File([new Uint8Array(1)], 'spec.pdf'),
         taskId: 't-1'
-      });
+      };
+      component.handleAttachmentSelected(event);
 
+      expect(attachmentsState.startUpload).toHaveBeenCalledWith(event);
       expect(tasksApi.moveTask).not.toHaveBeenCalled();
-      expect(component.selectedTask()).toBeNull();
     });
   });
 

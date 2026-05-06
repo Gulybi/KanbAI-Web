@@ -27,6 +27,7 @@ import { ColumnResponseDto } from '../models/column.model';
 import { BoardColumnComponent } from '../components/board-column/board-column.component';
 import { TaskDetailPanelComponent } from '../components/task-detail-panel/task-detail-panel.component';
 import type { DropzoneFileSelectedEvent } from '../../attachments/models/dropzone.model';
+import { AttachmentsStateService } from '../../attachments/state/attachments-state.service';
 
 /** Auto-dismiss duration (ms) for the inline move-error strip. */
 const MOVE_ERROR_AUTO_DISMISS_MS = 5000;
@@ -51,6 +52,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly boardState = inject(BoardStateService);
   private readonly columnsApi = inject(ColumnsApiService);
   private readonly tasksApi = inject(TasksApiService);
+  private readonly attachmentsState = inject(AttachmentsStateService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Read-through from the state service. */
@@ -203,12 +205,13 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Consumed by issue #50 (upload pipeline). In #49 we intentionally do
-   * nothing with the validated file — the emission is proof that the
-   * contract between the dropzone and the future upload service holds.
+   * Dispatches a validated dropzone emission into the root-provided
+   * AttachmentsStateService, which owns the HTTP + SignalR pipeline.
+   * Thin handler — no state mutation here so the upload survives
+   * panel-close and board-navigation.
    */
-  handleAttachmentSelected(_event: DropzoneFileSelectedEvent): void {
-    // No-op in #49. #50 will replace this with an upload call.
+  handleAttachmentSelected(event: DropzoneFileSelectedEvent): void {
+    this.attachmentsState.startUpload(event);
   }
 
   private loadColumns(projectId: string): void {

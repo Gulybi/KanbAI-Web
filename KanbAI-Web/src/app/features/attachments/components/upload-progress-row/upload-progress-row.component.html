@@ -1,0 +1,152 @@
+@let u = upload();
+<div
+  class="upload-row"
+  [class.upload-row--uploading]="isUploading()"
+  [class.upload-row--processing]="isProcessing()"
+  [class.upload-row--error]="isError()"
+>
+  <div class="upload-row__header">
+    @if (isError()) {
+      <svg
+        class="upload-row__leading-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    } @else {
+      <svg
+        class="upload-row__leading-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+        <polyline points="13 2 13 9 20 9" />
+      </svg>
+    }
+
+    <div class="upload-row__file-meta">
+      <span class="upload-row__filename">{{ u.file.name }}</span>
+      <span class="upload-row__filesize">· {{ u.fileSizeDisplay }}</span>
+    </div>
+
+    @if (!isError()) {
+      <div class="upload-row__controls">
+        <button
+          type="button"
+          class="upload-row__icon-button"
+          [attr.aria-disabled]="isProcessing() ? 'true' : null"
+          [attr.aria-label]="cancelAriaLabel()"
+          (click)="handleCancelClick()"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <line x1="4" y1="4" x2="12" y2="12" />
+            <line x1="12" y1="4" x2="4" y2="12" />
+          </svg>
+        </button>
+      </div>
+    }
+  </div>
+
+  @if (isUploading()) {
+    <div class="upload-row__progress">
+      <div
+        class="upload-row__bar"
+        role="progressbar"
+        [attr.aria-valuemin]="0"
+        [attr.aria-valuemax]="100"
+        [attr.aria-valuenow]="u.progress"
+        [attr.aria-label]="progressAriaLabel()"
+      >
+        <div
+          class="upload-row__bar-fill"
+          [style.width.%]="u.progress"
+        ></div>
+      </div>
+      <span class="upload-row__percent">{{ u.progress }}%</span>
+    </div>
+    <p class="upload-row__status">{{ statusLabel() }}</p>
+  }
+
+  @if (isProcessing()) {
+    <div class="upload-row__progress">
+      <div
+        class="upload-row__bar upload-row__bar--indeterminate"
+        role="progressbar"
+        [attr.aria-valuemin]="0"
+        [attr.aria-valuemax]="100"
+        [attr.aria-label]="progressAriaLabel()"
+      >
+        <div class="upload-row__bar-fill"></div>
+      </div>
+    </div>
+    <p class="upload-row__status">{{ statusLabel() }}</p>
+  }
+
+  @if (isError() && u.error; as error) {
+    <div class="upload-row__error" role="alert">
+      <p class="upload-row__error-message">{{ error.userMessage }}</p>
+      <div class="upload-row__error-controls">
+        <button
+          type="button"
+          class="upload-row__retry-button"
+          [attr.aria-disabled]="retryDisabled() ? 'true' : null"
+          (click)="handleRetryClick()"
+        >
+          Try again
+        </button>
+        <button
+          type="button"
+          class="upload-row__icon-button"
+          [attr.aria-label]="dismissAriaLabel()"
+          (click)="handleDismissClick()"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <line x1="4" y1="4" x2="12" y2="12" />
+            <line x1="12" y1="4" x2="4" y2="12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  }
+</div>
