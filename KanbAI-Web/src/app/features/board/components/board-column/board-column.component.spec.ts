@@ -38,7 +38,9 @@ function makeTask(partial?: Partial<BoardTask>): BoardTask {
       [column]="column"
       [tasks]="tasks"
       [connectedDropListIds]="connectedDropListIds"
+      [activeTaskId]="activeTaskId"
       (taskDropped)="onDropped($event)"
+      (taskOpened)="onOpened($event)"
     />
   `
 })
@@ -46,10 +48,16 @@ class BoardColumnHostComponent {
   column: BoardColumn = makeColumn();
   tasks: BoardTask[] = [];
   connectedDropListIds: string[] = [];
+  activeTaskId: string | null = null;
   dropped: CdkDragDrop<BoardTask[]> | null = null;
+  opened: BoardTask | null = null;
 
   onDropped(event: CdkDragDrop<BoardTask[]>): void {
     this.dropped = event;
+  }
+
+  onOpened(task: BoardTask): void {
+    this.opened = task;
   }
 }
 
@@ -127,6 +135,22 @@ describe('BoardColumnComponent', () => {
       const list = fixture.debugElement.query(By.css('.board-column__list'));
       expect(list.nativeElement.getAttribute('role')).toBe('list');
       expect(list.nativeElement.getAttribute('aria-label')).toBe('To Do column, 2 tasks');
+    });
+  });
+
+  describe('taskOpened output', () => {
+    it('re-emits the task payload when a child TaskCard emits cardActivated', () => {
+      const task = makeTask({ id: 't-77', title: 'Open me' });
+      host.tasks = [task];
+      fixture.detectChanges();
+
+      const cardDe = fixture.debugElement.query(By.css('app-task-card'));
+      // Trigger the output via the component instance directly — the
+      // pointer-classification logic is covered in task-card.component.spec.
+      // Here we just assert the re-emission wiring.
+      cardDe.componentInstance.cardActivated.emit();
+
+      expect(host.opened).toBe(task);
     });
   });
 

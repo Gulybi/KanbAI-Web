@@ -54,6 +54,15 @@ export class BoardColumnComponent {
   /** Re-emits CDK's drop event verbatim for the parent to orchestrate. */
   readonly taskDropped = output<CdkDragDrop<BoardTask[]>>();
 
+  /**
+   * The id of the task whose detail drawer is currently open. Used to
+   * toggle the visual `task-card--active` affordance on the right card.
+   */
+  readonly activeTaskId = input<string | null>(null);
+
+  /** Re-emits the task-card activation with the full task payload. */
+  readonly taskOpened = output<BoardTask>();
+
   /** Stable drop-list id used by the parent's `dropListIds` selector. */
   readonly dropListId = computed(() => `drop-list-${this.column().id}`);
 

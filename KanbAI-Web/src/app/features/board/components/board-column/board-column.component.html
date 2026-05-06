@@ -29,9 +29,11 @@
         <app-task-card
           [task]="task"
           [rollbackTrigger]="triggerFor(task.id)"
+          [active]="activeTaskId() === task.id"
           role="listitem"
           cdkDrag
           [cdkDragData]="task"
+          (cardActivated)="taskOpened.emit(task)"
         />
       }
     }

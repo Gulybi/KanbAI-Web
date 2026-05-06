@@ -192,6 +192,16 @@
   pointer-events: none;
 }
 
+// ---- Active card (drawer open for this card) ---------------------------
+// Persistent outline only — does not change cursor or layout so drag
+// behaviour is unchanged. Applied while `TaskDetailPanelComponent` is
+// open against this card.
+.task-card--active {
+  box-shadow: $shadow-card-hover;
+  outline: 2px solid $brand-primary-light;
+  outline-offset: 0;
+}
+
 // ---- Rolled-back shake --------------------------------------------------
 // Applied imperatively by the component when the server rejects a move
 // (e.g. class toggled by a signal that auto-clears after $motion-base).

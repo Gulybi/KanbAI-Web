@@ -1,8 +1,15 @@
 <article
   class="task-card"
   [class.task-card--rollback]="rolledBack()"
+  [class.task-card--active]="active()"
   [attr.aria-label]="accessibleName()"
   tabindex="0"
+  role="button"
+  (pointerdown)="onPointerDown($event)"
+  (pointermove)="onPointerMove($event)"
+  (click)="onCardClick()"
+  (keydown.enter)="onKeyActivate($event)"
+  (keydown.space)="onKeyActivate($event)"
 >
   <button
     type="button"
