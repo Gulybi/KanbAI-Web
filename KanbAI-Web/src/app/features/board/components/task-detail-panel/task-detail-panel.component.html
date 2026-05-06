@@ -63,6 +63,16 @@
           </div>
         }
 
+        @if (showAttachmentDivider()) {
+          <hr class="task-detail-panel__section-divider" aria-hidden="true" />
+        }
+
+        <app-attachment-list
+          [attachments]="completedAttachments()"
+          [fetchState]="listFetchState()"
+          (retryFetch)="handleRetryListFetch()"
+        />
+
         <span
           class="task-detail-panel__upload-live"
           aria-live="polite"

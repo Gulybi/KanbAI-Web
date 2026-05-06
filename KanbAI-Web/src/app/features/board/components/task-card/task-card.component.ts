@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 
 import { BoardTask } from '../../state/board-state.model';
+import { AttachmentsStateService } from '../../../attachments/state/attachments-state.service';
 
 /**
  * Duration (ms) of the rollback shake keyframes. Matches `$motion-base`
@@ -44,6 +45,8 @@ const ROLLBACK_SHAKE_MS = 250;
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TaskCardComponent {
+  private readonly attachmentsState = inject(AttachmentsStateService);
+
   readonly task = input.required<BoardTask>();
 
   /**
@@ -75,10 +78,26 @@ export class TaskCardComponent {
   private readonly rollbackActive = signal(false);
   readonly rolledBack = computed(() => this.rollbackActive());
 
-  /** Accessible name — appends `(has notes)` when the task has content. */
+  /**
+   * Number of completed attachments on this task, read from the
+   * root-provided AttachmentsStateService. Powers the decorative
+   * paperclip + count indicator added by issue #51.
+   */
+  readonly attachmentCount = computed(
+    () =>
+      this.attachmentsState.completedByTaskId()[this.task().id]?.length ?? 0
+  );
+
+  /**
+   * Accessible name — appends `(has notes)` when the task has content,
+   * and `(N attachment[s])` when attachmentCount is ≥ 1.
+   */
   readonly accessibleName = computed(() => {
     const t = this.task();
-    return t.content ? `${t.title} (has notes)` : t.title;
+    const n = this.attachmentCount();
+    const notes = t.content ? ' (has notes)' : '';
+    const atts = n >= 1 ? ` (${n} ${n === 1 ? 'attachment' : 'attachments'})` : '';
+    return `${t.title}${notes}${atts}`;
   });
 
   /** Pending setTimeout handle — cleared on re-trigger or component destroy. */

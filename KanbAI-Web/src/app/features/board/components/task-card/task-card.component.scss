@@ -75,14 +75,25 @@
   overflow: hidden;
 }
 
+// ---- Meta row (notes + attachments affordances) ------------------------
+// Hosts zero, one, or both of the meta affordances. Placed in the bottom
+// grid cell so the title row is unchanged.
+.task-card__meta-row {
+  grid-column: 1 / -1;
+  grid-row: 2;
+
+  display: inline-flex;
+  align-items: center;
+  gap: $space-sm;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 // ---- "Has content" affordance ------------------------------------------
 // Rendered when task.content is non-empty. A small dot + label; color
 // ($status-medium) is paired with the text "Notes" so it is never
-// color-only.
+// color-only. Grid placement is inherited from .task-card__meta-row.
 .task-card__meta {
-  grid-column: 1;
-  grid-row: 2;
-
   display: inline-flex;
   align-items: center;
   gap: $space-xxs;
@@ -90,6 +101,32 @@
   font-size: $font-size-sm;
   font-weight: $font-weight-medium;
   line-height: $line-height-tight;
+  color: $text-secondary;
+}
+
+// ---- Attachment affordance (issue #51) --------------------------------
+// Decorative only — not a button, not focusable, not hoverable. The count
+// is surfaced to AT via the card's accessibleName.
+.task-card__attachment-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-xxs;
+
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-tight;
+  color: $text-secondary;
+}
+
+.task-card__attachment-icon {
+  width: 12px;
+  height: 12px;
+  color: $brand-primary;
+  flex: 0 0 auto;
+}
+
+.task-card__attachment-count {
+  font-variant-numeric: tabular-nums;
   color: $text-secondary;
 }
 

@@ -1,0 +1,203 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+  width: 100%;
+}
+
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: $space-xs;
+}
+
+.attachment-list__header {
+  display: inline-flex;
+  align-items: baseline;
+  gap: $space-xs;
+  margin-bottom: $space-xs;
+}
+
+.attachment-list__label {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: $text-secondary;
+}
+
+.attachment-list__count {
+  display: inline;
+  font-weight: $font-weight-regular;
+  color: $text-secondary;
+  text-transform: none;
+  margin-left: $space-xxs;
+  font-variant-numeric: tabular-nums;
+}
+
+.attachment-list__rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-xs;
+}
+
+.attachment-list__row-slot {
+  animation: attachment-list-row-enter $motion-fast both;
+}
+
+@keyframes attachment-list-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.attachment-list__skeleton {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-xs;
+}
+
+.attachment-list__skeleton-row {
+  position: relative;
+  overflow: hidden;
+  height: 64px;
+  background: $bg-main;
+  border: 1px solid $border-light;
+  border-radius: $radius-md;
+  box-shadow: $shadow-card;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 40%;
+    background: $bg-sidebar-light;
+    animation: attachment-list-skeleton 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes attachment-list-skeleton {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(150%); }
+  100% { transform: translateX(-100%); }
+}
+
+.attachment-list__empty {
+  margin: 0;
+  padding: $space-md;
+  text-align: center;
+  background: $bg-dropzone;
+  border: 1px dashed $border-light;
+  border-radius: $radius-md;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  color: $text-secondary;
+  line-height: $line-height-normal;
+}
+
+.attachment-list__error {
+  display: flex;
+  align-items: flex-start;
+  gap: $space-xs;
+  padding: $space-sm $space-md;
+  background: rgba(229, 107, 111, 0.08);
+  border-left: 3px solid $status-high;
+  border-radius: $radius-md;
+  margin-bottom: $space-xs;
+  flex-wrap: wrap;
+}
+
+.attachment-list__error--retryable {
+  background: $brand-primary-light;
+  border-left-color: $status-average;
+}
+
+.attachment-list__error-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: $status-high;
+
+  .attachment-list__error--retryable & {
+    color: $status-average;
+  }
+}
+
+.attachment-list__error-message {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-normal;
+  color: $text-primary;
+}
+
+.attachment-list__error-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xxs;
+  height: 32px;
+  padding: 0 $space-sm;
+  background: $brand-primary-light;
+  border: 0;
+  border-radius: $radius-md;
+  font-family: inherit;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition:
+    background-color $motion-fast,
+    color $motion-fast;
+
+  &:hover {
+    background: $brand-primary;
+    color: $text-inverse;
+    font-weight: $font-weight-semibold;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:active {
+    background: $brand-primary-hover;
+    color: $text-inverse;
+  }
+
+  @media (pointer: coarse) {
+    height: 44px;
+    padding: 0 $space-md;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attachment-list__row-slot,
+  .attachment-list__skeleton-row::before {
+    animation: none;
+  }
+}

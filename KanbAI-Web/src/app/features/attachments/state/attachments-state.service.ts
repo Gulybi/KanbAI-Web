@@ -13,6 +13,7 @@ import { BaseStateService } from '../../../core/state/base-state.service';
 import { SignalRService } from '../../../core/services/signalr.service';
 import { ASSET_EVENT } from '../constants/asset-events';
 import { mapAssetFailedToUserMessage, mapUploadHttpErrorToUserMessage } from '../constants/upload-errors';
+import { mapListFetchHttpErrorToUserMessage } from '../constants/list-errors';
 import {
   AssetFailedEventDto,
   AssetResponseDto,
@@ -23,6 +24,7 @@ import {
   AttachmentUpload,
   AttachmentUploadError
 } from '../models/attachment-upload.model';
+import { AttachmentListFetchState } from '../models/attachment-list-fetch.model';
 import { formatFileSize } from '../utils/format-file-size';
 import type { DropzoneFileSelectedEvent } from '../models/dropzone.model';
 import { AttachmentsApiService } from '../services/attachments-api.service';
@@ -52,11 +54,17 @@ export class AttachmentsStateService extends BaseStateService<AttachmentsState> 
     this.select(s => s.uploadsByTaskId);
   readonly completedByTaskId: Signal<Record<string, AssetResponseDto[]>> =
     this.select(s => s.completedByTaskId);
+  readonly completedFetchByTaskId: Signal<
+    Record<string, AttachmentListFetchState>
+  > = this.select(s => s.completedFetchByTaskId);
 
   private subscriptionBag: Subscription[] = [];
 
   /** One entry per in-flight upload keyed by uploadId (local UUID). */
   private readonly uploadSubs = new Map<string, Subscription>();
+
+  /** One entry per in-flight list fetch keyed by taskId. */
+  private readonly listSubs = new Map<string, Subscription>();
 
   /**
    * Ids of assets the user cancelled after the 201. Late-arriving
@@ -106,6 +114,10 @@ export class AttachmentsStateService extends BaseStateService<AttachmentsState> 
         sub.unsubscribe();
       }
       this.uploadSubs.clear();
+      for (const sub of this.listSubs.values()) {
+        sub.unsubscribe();
+      }
+      this.listSubs.clear();
       for (const timer of this.cancelTimers.values()) {
         clearTimeout(timer);
       }
@@ -186,6 +198,45 @@ export class AttachmentsStateService extends BaseStateService<AttachmentsState> 
       return;
     }
     this.removeRow(uploadId);
+  }
+
+  /**
+   * Fires the panel-open list fetch for the given task. Idempotent: a call
+   * while a fetch for the same taskId is already loading is a no-op.
+   *
+   * On success the server response is merged into `completedByTaskId` via
+   * {@link mergeCompletedAssets}; on failure the error is surfaced in
+   * `completedFetchByTaskId[taskId]` but `completedByTaskId` is preserved
+   * (so SignalR-origin rows stay visible behind the error banner).
+   */
+  hydrateCompletedForTask(taskId: string): void {
+    if (!taskId) {
+      return;
+    }
+    const current = this.getState().completedFetchByTaskId[taskId];
+    if (current?.phase === 'loading') {
+      return;
+    }
+    const existingSub = this.listSubs.get(taskId);
+    if (existingSub) {
+      existingSub.unsubscribe();
+      this.listSubs.delete(taskId);
+    }
+    this.setFetchState(taskId, { phase: 'loading', error: null });
+
+    const sub = this.attachmentsApi.listAttachmentsByTask(taskId).subscribe({
+      next: assets => {
+        this.listSubs.delete(taskId);
+        this.mergeCompletedAssets(taskId, assets);
+        this.setFetchState(taskId, { phase: 'ready', error: null });
+      },
+      error: err => {
+        this.listSubs.delete(taskId);
+        const mapped = mapListFetchHttpErrorToUserMessage(err);
+        this.setFetchState(taskId, { phase: 'error', error: mapped });
+      }
+    });
+    this.listSubs.set(taskId, sub);
   }
 
   // ------------------- HTTP pipeline ----------------
@@ -405,6 +456,51 @@ export class AttachmentsStateService extends BaseStateService<AttachmentsState> 
     });
   }
 
+  /**
+   * Reconciles a server list response with in-memory SignalR-origin entries:
+   *  - Server asset not in state → insert.
+   *  - Server asset already in state → keep whichever has the later updatedAt.
+   *  - State asset absent from server response → preserved (no prune).
+   * Result is sorted `createdAt` DESC (newest first).
+   */
+  private mergeCompletedAssets(
+    taskId: string,
+    serverAssets: readonly AssetResponseDto[]
+  ): void {
+    const byTask = this.getState().completedByTaskId;
+    const existing = byTask[taskId] ?? [];
+    const byId = new Map<string, AssetResponseDto>();
+    for (const asset of existing) {
+      byId.set(asset.id, asset);
+    }
+    for (const server of serverAssets) {
+      const current = byId.get(server.id);
+      if (!current) {
+        byId.set(server.id, server);
+        continue;
+      }
+      if (isLater(server.updatedAt, current.updatedAt)) {
+        byId.set(server.id, server);
+      }
+    }
+    const merged = Array.from(byId.values()).sort((a, b) =>
+      compareCreatedAtDesc(a.createdAt, b.createdAt)
+    );
+    this.setState({
+      completedByTaskId: { ...byTask, [taskId]: merged }
+    });
+  }
+
+  private setFetchState(
+    taskId: string,
+    next: AttachmentListFetchState
+  ): void {
+    const current = this.getState().completedFetchByTaskId;
+    this.setState({
+      completedFetchByTaskId: { ...current, [taskId]: next }
+    });
+  }
+
   private markAssetCancelled(assetId: string): void {
     this.cancelledAssetIds.add(assetId);
     const existingTimer = this.cancelTimers.get(assetId);
@@ -433,6 +529,38 @@ export class AttachmentsStateService extends BaseStateService<AttachmentsState> 
     }
     this.subscriptionBag = [];
   }
+}
+
+/**
+ * True iff `a` is a strictly-later ISO timestamp than `b`. Treats invalid or
+ * missing values as "not later", so a present timestamp always wins against
+ * an empty one.
+ */
+function isLater(a: string | null | undefined, b: string | null | undefined): boolean {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  if (Number.isNaN(ta)) {
+    return false;
+  }
+  if (Number.isNaN(tb)) {
+    return true;
+  }
+  return ta > tb;
+}
+
+/**
+ * DESC sort comparator (newest first). Stable for equal timestamps — returns
+ * 0, leaving Map insertion order intact.
+ */
+function compareCreatedAtDesc(a: string | null | undefined, b: string | null | undefined): number {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  const na = Number.isNaN(ta) ? 0 : ta;
+  const nb = Number.isNaN(tb) ? 0 : tb;
+  if (na === nb) {
+    return 0;
+  }
+  return nb - na;
 }
 
 /**

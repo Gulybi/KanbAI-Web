@@ -4,6 +4,7 @@ import {
   HostListener,
   Signal,
   computed,
+  effect,
   inject,
   input,
   output
@@ -12,10 +13,16 @@ import {
 import { BoardTask } from '../../state/board-state.model';
 import { FileDropzoneComponent } from '../../../attachments/components/file-dropzone/file-dropzone.component';
 import { UploadProgressRowComponent } from '../../../attachments/components/upload-progress-row/upload-progress-row.component';
+import { AttachmentListComponent } from '../../../attachments/components/attachment-list/attachment-list.component';
 import { AttachmentsStateService } from '../../../attachments/state/attachments-state.service';
 import { UPLOAD_BLOCKED_REASON } from '../../../attachments/constants/upload-errors';
 import type { DropzoneFileSelectedEvent } from '../../../attachments/models/dropzone.model';
 import { AttachmentUpload } from '../../../attachments/models/attachment-upload.model';
+import { AssetResponseDto } from '../../../attachments/models/attachment.model';
+import {
+  AttachmentListFetchState,
+  IDLE_LIST_FETCH_STATE
+} from '../../../attachments/models/attachment-list-fetch.model';
 
 /**
  * Right-side drawer. Hosts the file dropzone and the stack of in-flight
@@ -26,7 +33,11 @@ import { AttachmentUpload } from '../../../attachments/models/attachment-upload.
 @Component({
   selector: 'app-task-detail-panel',
   standalone: true,
-  imports: [FileDropzoneComponent, UploadProgressRowComponent],
+  imports: [
+    FileDropzoneComponent,
+    UploadProgressRowComponent,
+    AttachmentListComponent
+  ],
   templateUrl: './task-detail-panel.component.html',
   styleUrl: './task-detail-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -47,6 +58,29 @@ export class TaskDetailPanelComponent {
   readonly uploads: Signal<AttachmentUpload[]> = computed<AttachmentUpload[]>(
     () => this.attachmentsState.uploadsByTaskId()[this.task().id] ?? []
   );
+
+  /** Completed attachments for the currently-open task (issue #51). */
+  readonly completedAttachments: Signal<readonly AssetResponseDto[]> = computed(
+    () => this.attachmentsState.completedByTaskId()[this.task().id] ?? []
+  );
+
+  /** Panel-open list-fetch phase for the currently-open task (issue #51). */
+  readonly listFetchState: Signal<AttachmentListFetchState> = computed(
+    () =>
+      this.attachmentsState.completedFetchByTaskId()[this.task().id] ??
+      IDLE_LIST_FETCH_STATE
+  );
+
+  /**
+   * Renders the divider between the upload stack and the attachment list
+   * only when the attachment list is actually about to render something.
+   */
+  readonly showAttachmentDivider: Signal<boolean> = computed(() => {
+    return (
+      this.completedAttachments().length > 0 ||
+      this.listFetchState().phase !== 'idle'
+    );
+  });
 
   /** True while any row is 'uploading' or 'processing'. */
   readonly isUploading: Signal<boolean> = computed(() =>
@@ -102,6 +136,17 @@ export class TaskDetailPanelComponent {
     return `Processing ${active.file.name}`;
   });
 
+  constructor() {
+    // Hydrate the completed-attachments list whenever the open task changes.
+    // `hydrateCompletedForTask` is idempotent and dedupes on phase==='loading'.
+    effect(() => {
+      const id = this.task().id;
+      if (id) {
+        this.attachmentsState.hydrateCompletedForTask(id);
+      }
+    });
+  }
+
   @HostListener('document:keydown.escape')
   handleEscape(): void {
     this.panelClosed.emit();
@@ -125,6 +170,10 @@ export class TaskDetailPanelComponent {
 
   handleDismiss(uploadId: string): void {
     this.attachmentsState.dismiss(uploadId);
+  }
+
+  handleRetryListFetch(): void {
+    this.attachmentsState.hydrateCompletedForTask(this.task().id);
   }
 
   trackUploadById(_index: number, upload: AttachmentUpload): string {
