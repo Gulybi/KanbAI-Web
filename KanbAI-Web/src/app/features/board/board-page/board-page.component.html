@@ -56,9 +56,19 @@
           [connectedDropListIds]="dropListIds()"
           [rolledBackTaskId]="rolledBackTaskId()"
           [rolledBackTrigger]="rolledBackTrigger()"
+          [activeTaskId]="selectedTask()?.id ?? null"
           (taskDropped)="handleTaskDropped(column.id, $event)"
+          (taskOpened)="handleTaskOpened($event)"
         />
       }
     </div>
+  }
+
+  @if (selectedTask(); as task) {
+    <app-task-detail-panel
+      [task]="task"
+      (panelClosed)="handleTaskDetailClosed()"
+      (fileSelected)="handleAttachmentSelected($event)"
+    />
   }
 </div>

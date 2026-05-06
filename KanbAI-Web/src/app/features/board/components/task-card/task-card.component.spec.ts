@@ -81,6 +81,62 @@ describe('TaskCardComponent', () => {
     });
   });
 
+  describe('Click / keyboard activation', () => {
+    function dispatch(type: string, init: PointerEventInit | KeyboardEventInit): Event {
+      const event = type.startsWith('pointer')
+        ? new PointerEvent(type, init as PointerEventInit)
+        : type.startsWith('key')
+          ? new KeyboardEvent(type, init as KeyboardEventInit)
+          : new Event(type);
+      const el = fixture.debugElement.query(By.css('.task-card')).nativeElement as HTMLElement;
+      el.dispatchEvent(event);
+      return event;
+    }
+
+    it('emits cardActivated on click (no preceding pointer move)', () => {
+      const spy = vi.fn();
+      fixture.componentInstance.cardActivated.subscribe(spy);
+
+      dispatch('pointerdown', { clientX: 10, clientY: 10 });
+      dispatch('click', {});
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('suppresses cardActivated when pointer moved far enough to be a drag', () => {
+      const spy = vi.fn();
+      fixture.componentInstance.cardActivated.subscribe(spy);
+
+      dispatch('pointerdown', { clientX: 10, clientY: 10 });
+      dispatch('pointermove', { clientX: 100, clientY: 100 });
+      dispatch('click', {});
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('Enter key emits cardActivated', () => {
+      const spy = vi.fn();
+      fixture.componentInstance.cardActivated.subscribe(spy);
+      dispatch('keydown', { key: 'Enter' });
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('Space key emits cardActivated and prevents default', () => {
+      const spy = vi.fn();
+      fixture.componentInstance.cardActivated.subscribe(spy);
+      const event = dispatch('keydown', { key: ' ', cancelable: true });
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('applies .task-card--active when the active input is true', () => {
+      fixture.componentRef.setInput('active', true);
+      fixture.detectChanges();
+      const el = fixture.debugElement.query(By.css('.task-card')).nativeElement as HTMLElement;
+      expect(el.classList.contains('task-card--active')).toBe(true);
+    });
+  });
+
   describe('Rollback shake', () => {
     it('does not apply the rollback class on first render', () => {
       const card = fixture.debugElement.query(By.css('.task-card'));

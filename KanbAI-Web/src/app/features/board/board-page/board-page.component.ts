@@ -25,6 +25,8 @@ import {
 } from '../services/tasks-api.service';
 import { ColumnResponseDto } from '../models/column.model';
 import { BoardColumnComponent } from '../components/board-column/board-column.component';
+import { TaskDetailPanelComponent } from '../components/task-detail-panel/task-detail-panel.component';
+import type { DropzoneFileSelectedEvent } from '../../attachments/models/dropzone.model';
 
 /** Auto-dismiss duration (ms) for the inline move-error strip. */
 const MOVE_ERROR_AUTO_DISMISS_MS = 5000;
@@ -39,7 +41,7 @@ const MOVE_ERROR_AUTO_DISMISS_MS = 5000;
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [DragDropModule, BoardColumnComponent],
+  imports: [DragDropModule, BoardColumnComponent, TaskDetailPanelComponent],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -88,6 +90,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   /** Screen-reader announcement region — kept in sync via `announce()`. */
   readonly dragAnnouncement = signal<string>('');
+
+  /**
+   * The task whose detail drawer is currently open, or null when the
+   * drawer is closed. Set by `handleTaskOpened`, cleared by `handleTaskDetailClosed`.
+   */
+  readonly selectedTask = signal<BoardTask | null>(null);
 
   /** Pending auto-dismiss timer for `moveError`. */
   private moveErrorTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -182,6 +190,25 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   /** User-dismiss action for the inline move-error strip. */
   dismissMoveError(): void {
     this.clearMoveError();
+  }
+
+  /** Invoked by `BoardColumnComponent` when a task card is activated. */
+  handleTaskOpened(task: BoardTask): void {
+    this.selectedTask.set(task);
+  }
+
+  /** Invoked by `TaskDetailPanelComponent.panelClosed`. */
+  handleTaskDetailClosed(): void {
+    this.selectedTask.set(null);
+  }
+
+  /**
+   * Consumed by issue #50 (upload pipeline). In #49 we intentionally do
+   * nothing with the validated file — the emission is proof that the
+   * contract between the dropzone and the future upload service holds.
+   */
+  handleAttachmentSelected(_event: DropzoneFileSelectedEvent): void {
+    // No-op in #49. #50 will replace this with an upload call.
   }
 
   private loadColumns(projectId: string): void {

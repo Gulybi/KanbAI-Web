@@ -1,0 +1,53 @@
+<aside
+  class="task-detail-panel"
+  role="dialog"
+  aria-modal="false"
+  [attr.aria-labelledby]="titleId()"
+>
+  <header class="task-detail-panel__header">
+    <div class="task-detail-panel__header-text">
+      <h2
+        class="task-detail-panel__title"
+        [id]="titleId()"
+      >{{ task().title }}</h2>
+      <span class="task-detail-panel__placeholder-badge" aria-hidden="true">
+        Placeholder
+      </span>
+    </div>
+    <button
+      type="button"
+      class="task-detail-panel__close"
+      aria-label="Close task details"
+      (click)="handleClose()"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <line x1="4" y1="4" x2="12" y2="12" />
+        <line x1="12" y1="4" x2="4" y2="12" />
+      </svg>
+    </button>
+  </header>
+
+  <div class="task-detail-panel__body">
+    <section class="task-detail-panel__section">
+      <h3 class="task-detail-panel__section-label">Attachment</h3>
+      <app-file-dropzone
+        [taskId]="task().id"
+        [disabled]="disabled()"
+        [disabledReason]="disabledReason()"
+        (fileSelected)="handleDropzoneFileSelected($event)"
+      />
+    </section>
+  </div>
+</aside>

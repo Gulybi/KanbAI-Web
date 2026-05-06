@@ -495,6 +495,50 @@ describe('BoardPageComponent', () => {
     });
   });
 
+  describe('Task detail drawer', () => {
+    it('opens the drawer when handleTaskOpened is called with a task', async () => {
+      const { fixture, component } = await mount({
+        columnsApiResult: of([makeColumnDto({ id: 'col-1', name: 'To Do' })])
+      });
+      fixture.detectChanges();
+
+      const task = makeTask({ id: 't-77', title: 'Open me' });
+      component.handleTaskOpened(task);
+      fixture.detectChanges();
+
+      expect(component.selectedTask()).toBe(task);
+      const panel = fixture.debugElement.query(By.css('app-task-detail-panel'));
+      expect(panel).toBeTruthy();
+    });
+
+    it('closes the drawer when handleTaskDetailClosed is called', async () => {
+      const { fixture, component } = await mount();
+      fixture.detectChanges();
+      component.handleTaskOpened(makeTask());
+      fixture.detectChanges();
+
+      component.handleTaskDetailClosed();
+      fixture.detectChanges();
+
+      expect(component.selectedTask()).toBeNull();
+      const panel = fixture.debugElement.query(By.css('app-task-detail-panel'));
+      expect(panel).toBeNull();
+    });
+
+    it('handleAttachmentSelected is a no-op in #49 (no state mutation, no HTTP call)', async () => {
+      const { fixture, component, tasksApi } = await mount();
+      fixture.detectChanges();
+
+      component.handleAttachmentSelected({
+        file: new File([new Uint8Array(1)], 'spec.pdf'),
+        taskId: 't-1'
+      });
+
+      expect(tasksApi.moveTask).not.toHaveBeenCalled();
+      expect(component.selectedTask()).toBeNull();
+    });
+  });
+
   describe('Move-error dismiss button', () => {
     it('clears moveError when dismissMoveError() is called', async () => {
       const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });

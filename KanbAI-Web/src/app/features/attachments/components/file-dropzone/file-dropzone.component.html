@@ -1,0 +1,122 @@
+@let p = phase();
+<div
+  class="file-dropzone"
+  [class.file-dropzone--dragover]="p === 'dragover'"
+  [class.file-dropzone--selected]="p === 'selected'"
+  [class.file-dropzone--error]="p === 'error'"
+  [class.file-dropzone--disabled]="p === 'disabled'"
+  role="button"
+  [attr.tabindex]="disabled() ? -1 : 0"
+  [attr.aria-label]="accessibleName()"
+  [attr.aria-disabled]="disabled() ? 'true' : null"
+  (dragenter)="handleDragEnter($event)"
+  (dragover)="handleDragOver($event)"
+  (dragleave)="handleDragLeave($event)"
+  (drop)="handleDrop($event)"
+  (click)="handleClick()"
+  (keydown.enter)="handleKeyActivate($event)"
+  (keydown.space)="handleKeyActivate($event)"
+>
+  <input
+    #nativeInput
+    type="file"
+    class="file-dropzone__native-input"
+    [accept]="acceptAttribute"
+    [disabled]="disabled()"
+    tabindex="-1"
+    aria-hidden="true"
+    (click)="$event.stopPropagation()"
+    (change)="handleFileInputChange($event)"
+  />
+
+  @switch (p) {
+    @case ('selected') {
+      <svg
+        class="file-dropzone__icon"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+      <span class="file-dropzone__summary">
+        <span class="file-dropzone__filename">{{ selectedFileSummary() }}</span>
+      </span>
+      <p class="file-dropzone__hint">Drop another file to replace.</p>
+      @if (informationalNotice(); as note) {
+        <span class="file-dropzone__notice">
+          <svg
+            class="file-dropzone__notice-icon"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4" />
+            <path d="M12 16h.01" />
+          </svg>
+          <span class="file-dropzone__notice-text">{{ note.message }}</span>
+        </span>
+      }
+    }
+    @case ('error') {
+      <svg
+        class="file-dropzone__icon"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4" />
+        <path d="M12 16h.01" />
+      </svg>
+      <h3 class="file-dropzone__headline">{{ currentErrorMessage() }}</h3>
+      <p class="file-dropzone__hint">Drop or pick another file to try again.</p>
+    }
+    @default {
+      <svg
+        class="file-dropzone__icon"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="17 8 12 3 7 8" />
+        <line x1="12" y1="3" x2="12" y2="15" />
+      </svg>
+      <h3 class="file-dropzone__headline">Drop a file here</h3>
+      <p class="file-dropzone__hint">{{ resolvedHint() }}</p>
+    }
+  }
+
+  <span
+    class="file-dropzone__sr-only"
+    aria-live="polite"
+    aria-atomic="true"
+  >{{ liveRegionText() }}</span>
+</div>

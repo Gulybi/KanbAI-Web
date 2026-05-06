@@ -6,6 +6,7 @@ import {
   effect,
   inject,
   input,
+  output,
   signal,
   untracked
 } from '@angular/core';
@@ -53,6 +54,20 @@ export class TaskCardComponent {
   readonly rollbackTrigger = input<number>(0);
 
   /**
+   * Flipped to true while this card is the active target of the open
+   * task-detail drawer. Renders a persistent outline so the user can
+   * see which card the drawer is for.
+   */
+  readonly active = input<boolean>(false);
+
+  /**
+   * Emitted when the user clicks the card OR presses Enter/Space on it.
+   * A drag is detected via `cdkDragStarted`/`cdkDragEnded` and suppresses
+   * the click; keyboard activation is always honoured.
+   */
+  readonly cardActivated = output<void>();
+
+  /**
    * Internal signal flipped true for `ROLLBACK_SHAKE_MS` after the trigger
    * changes, then flipped back. The template binds it onto
    * `.task-card--rollback`.
@@ -69,6 +84,49 @@ export class TaskCardComponent {
   /** Pending setTimeout handle — cleared on re-trigger or component destroy. */
   private shakeTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private readonly destroyRef = inject(DestroyRef);
+
+  /**
+   * Pixel threshold above which a pointerdown+pointerup pair is classified
+   * as a drag rather than a click. Keeps CDK's drag gesture and the new
+   * click-to-open gesture from colliding.
+   */
+  private static readonly CLICK_DRAG_THRESHOLD_PX = 5;
+
+  private pointerDownX = 0;
+  private pointerDownY = 0;
+  private pointerMovedFar = false;
+
+  /** Pointerdown — record origin and reset the "moved far" flag. */
+  onPointerDown(event: PointerEvent): void {
+    this.pointerDownX = event.clientX;
+    this.pointerDownY = event.clientY;
+    this.pointerMovedFar = false;
+  }
+
+  /** Pointermove — flip the flag once the pointer leaves the click bubble. */
+  onPointerMove(event: PointerEvent): void {
+    if (this.pointerMovedFar) return;
+    const dx = event.clientX - this.pointerDownX;
+    const dy = event.clientY - this.pointerDownY;
+    if (dx * dx + dy * dy > TaskCardComponent.CLICK_DRAG_THRESHOLD_PX ** 2) {
+      this.pointerMovedFar = true;
+    }
+  }
+
+  /** Click — emit cardActivated unless the gesture was a drag. */
+  onCardClick(): void {
+    if (this.pointerMovedFar) {
+      this.pointerMovedFar = false;
+      return;
+    }
+    this.cardActivated.emit();
+  }
+
+  /** Enter / Space — keyboard always emits, no drag ambiguity possible. */
+  onKeyActivate(event: Event): void {
+    event.preventDefault();
+    this.cardActivated.emit();
+  }
 
   constructor() {
     // Initial value of rollbackTrigger is `0` — we do NOT want to shake on
