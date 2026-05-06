@@ -42,12 +42,35 @@
   <div class="task-detail-panel__body">
     <section class="task-detail-panel__section">
       <h3 class="task-detail-panel__section-label">Attachment</h3>
-      <app-file-dropzone
-        [taskId]="task().id"
-        [disabled]="disabled()"
-        [disabledReason]="disabledReason()"
-        (fileSelected)="handleDropzoneFileSelected($event)"
-      />
+      <div class="task-detail-panel__attachment-section">
+        <app-file-dropzone
+          [taskId]="task().id"
+          [disabled]="resolvedDisabled()"
+          [disabledReason]="resolvedDisabledReason()"
+          (fileSelected)="handleDropzoneFileSelected($event)"
+        />
+
+        @if (uploads().length > 0) {
+          <div class="task-detail-panel__upload-list">
+            @for (upload of uploads(); track upload.id) {
+              <app-upload-progress-row
+                [upload]="upload"
+                (cancel)="handleCancel($event)"
+                (retry)="handleRetry($event)"
+                (dismiss)="handleDismiss($event)"
+              />
+            }
+          </div>
+        }
+
+        <span
+          class="task-detail-panel__upload-live"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {{ uploadLiveMessage() }}
+        </span>
+      </div>
     </section>
   </div>
 </aside>
