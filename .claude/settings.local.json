@@ -36,12 +36,20 @@
       "Bash(sed -n '/private onTaskMoved/,/^  }$/p' src/app/features/board/state/board-state.service.ts)",
       "Bash(tee /tmp/vitest-full.log)",
       "Bash(git stash *)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(tee /tmp/test2.out)",
+      "Bash(tee /tmp/test3.out)",
+      "Bash(grep -v \"chunk\\\\\\\\|  \")",
+      "Bash(cp src/app/features/projects/components/column-draft-list/column-draft-list.component.ts /tmp/fix_version.ts)",
+      "Bash(sed -n '90,110p' src/app/features/projects/components/column-draft-list/column-draft-list.component.ts)",
+      "Bash(cp KanbAI-Web/src/app/features/projects/components/column-draft-list/column-draft-list.component.ts /tmp/fix_version.ts && git checkout HEAD -- KanbAI-Web/src/app/features/projects/components/column-draft-list/column-draft-list.component.ts && echo \"---PROD FILE NOW BUGGY---\" && grep -n \"queueMicrotask\\\\|ngOnInit\" KanbAI-Web/src/app/features/projects/components/column-draft-list/column-draft-list.component.ts)"
     ],
     "additionalDirectories": [
       "C:\\temp\\KanbAI-Web\\docs\\handoffs",
       "c:\\temp\\KanbAI-Web\\KanbAI-Web\\src\\app\\core",
-      "c:\\temp\\KanbAI-Web\\KanbAI-Web\\src\\app\\features\\projects"
+      "c:\\temp\\KanbAI-Web\\KanbAI-Web\\src\\app\\features\\projects",
+      "\\tmp"
     ]
   }
 }

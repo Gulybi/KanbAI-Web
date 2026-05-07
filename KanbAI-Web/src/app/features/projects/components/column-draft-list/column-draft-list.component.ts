@@ -2,7 +2,9 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
+  OnInit,
   QueryList,
   ViewChildren,
   afterNextRender,
@@ -11,6 +13,7 @@ import {
   input,
   signal
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
@@ -42,7 +45,7 @@ import {
   styleUrl: './column-draft-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class ColumnDraftListComponent implements AfterViewInit {
+export class ColumnDraftListComponent implements AfterViewInit, OnInit {
   /** The array from the parent, passed by reference so edits propagate. */
   readonly formArray =
     input.required<FormArray<FormGroup<ColumnDraftFormShape>>>();
@@ -90,18 +93,18 @@ export class ColumnDraftListComponent implements AfterViewInit {
   private readonly addButtonRefs!: QueryList<ElementRef<HTMLElement>>;
 
   private readonly injector = inject(Injector);
+  private readonly destroyRef = inject(DestroyRef);
 
-  constructor() {
-    // Hook onto the FormArray so status changes (including array-level
-    // duplicate flagging) propagate into `duplicateFlags`.
-    queueMicrotask(() => {
-      const array = this.formArray();
-      array.statusChanges.subscribe(() => {
+  ngOnInit(): void {
+    // Subscribe AFTER input binding — formArray() is now safe to read.
+    const array = this.formArray();
+    array.statusChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
         this.arrayErrorTick.update(n => n + 1);
       });
-      // Initial tick so duplicates flagged at construction render.
-      this.arrayErrorTick.update(n => n + 1);
-    });
+    // Initial tick so duplicates flagged at construction render.
+    this.arrayErrorTick.update(n => n + 1);
   }
 
   ngAfterViewInit(): void {
