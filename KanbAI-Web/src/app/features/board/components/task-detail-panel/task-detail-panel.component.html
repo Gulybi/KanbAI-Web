@@ -10,9 +10,6 @@
         class="task-detail-panel__title"
         [id]="titleId()"
       >{{ task().title }}</h2>
-      <span class="task-detail-panel__placeholder-badge" aria-hidden="true">
-        Placeholder
-      </span>
     </div>
     <button
       type="button"
@@ -40,6 +37,22 @@
   </header>
 
   <div class="task-detail-panel__body">
+    <section
+      class="task-detail-panel__section"
+      [attr.aria-labelledby]="descriptionLabelId()"
+    >
+      <h3
+        class="task-detail-panel__section-label"
+        [id]="descriptionLabelId()"
+      >Description</h3>
+
+      @if (descriptionDisplay().mode === 'text') {
+        <p class="task-detail-panel__description">{{ descriptionDisplay().text }}</p>
+      } @else {
+        <p class="task-detail-panel__description-empty">No description yet.</p>
+      }
+    </section>
+
     <section class="task-detail-panel__section">
       <h3 class="task-detail-panel__section-label">Attachment</h3>
       <div class="task-detail-panel__attachment-section">

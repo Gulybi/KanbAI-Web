@@ -11,6 +11,15 @@ import {
 } from '@angular/core';
 
 import { BoardTask } from '../../state/board-state.model';
+
+/**
+ * Presentational projection of BoardTask.content for the Description
+ * section. `empty` = render the empty-state copy; `text` = render
+ * `text` with preserved line breaks.
+ */
+type TaskDescriptionDisplay =
+  | { readonly mode: 'empty'; readonly text: '' }
+  | { readonly mode: 'text'; readonly text: string };
 import { FileDropzoneComponent } from '../../../attachments/components/file-dropzone/file-dropzone.component';
 import { UploadProgressRowComponent } from '../../../attachments/components/upload-progress-row/upload-progress-row.component';
 import { AttachmentListComponent } from '../../../attachments/components/attachment-list/attachment-list.component';
@@ -53,6 +62,24 @@ export class TaskDetailPanelComponent {
   readonly fileSelected = output<DropzoneFileSelectedEvent>();
 
   readonly titleId = computed(() => `task-detail-title-${this.task().id}`);
+
+  /** Stable per-task id for the Description section heading (mirrors `titleId`). */
+  readonly descriptionLabelId = computed(
+    () => `task-detail-description-${this.task().id}`
+  );
+
+  /**
+   * Presentational projection of `task().content`. Null, empty-string, and
+   * whitespace-only values all collapse to the `empty` mode so the template
+   * can render the empty-state copy without re-implementing the rule.
+   */
+  readonly descriptionDisplay: Signal<TaskDescriptionDisplay> = computed(() => {
+    const raw = this.task().content;
+    if (raw === null || raw === '' || raw.trim() === '') {
+      return { mode: 'empty', text: '' };
+    }
+    return { mode: 'text', text: raw };
+  });
 
   /** All in-flight upload rows for the currently-open task. */
   readonly uploads: Signal<AttachmentUpload[]> = computed<AttachmentUpload[]>(

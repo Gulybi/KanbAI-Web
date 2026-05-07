@@ -125,11 +125,6 @@ describe('TaskDetailPanelComponent', () => {
     expect(panel.nativeElement.getAttribute('aria-labelledby')).toBe('task-detail-title-t-1');
   });
 
-  it('renders the placeholder badge so the stub nature is visible', () => {
-    const badge = fixture.debugElement.query(By.css('.task-detail-panel__placeholder-badge'));
-    expect(badge).toBeTruthy();
-  });
-
   it('close button click emits panelClosed', () => {
     const close = fixture.debugElement.query(By.css('.task-detail-panel__close'));
     close.nativeElement.click();
@@ -159,6 +154,107 @@ describe('TaskDetailPanelComponent', () => {
     component.handleDropzoneFileSelected(event);
     expect(selected.length).toBe(1);
     expect(selected[0]).toBe(event);
+  });
+
+  describe('description section (#83)', () => {
+    it('renders the description text when content is non-empty', () => {
+      fixture.componentRef.setInput('task', makeTask({ content: 'Hello world.' }));
+      fixture.detectChanges();
+
+      const desc = fixture.debugElement.query(
+        By.css('.task-detail-panel__description')
+      );
+      expect(desc).toBeTruthy();
+      expect(desc.nativeElement.textContent.trim()).toBe('Hello world.');
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__description-empty'))
+      ).toBeNull();
+    });
+
+    it('preserves line breaks via white-space: pre-wrap', () => {
+      fixture.componentRef.setInput('task', makeTask({ content: 'line 1\nline 2' }));
+      fixture.detectChanges();
+
+      const desc = fixture.debugElement.query(
+        By.css('.task-detail-panel__description')
+      );
+      expect(desc).toBeTruthy();
+      // Raw newline survives the DOM round-trip (no <br> injection, no split).
+      expect(desc.nativeElement.textContent).toContain('\n');
+      const style = getComputedStyle(desc.nativeElement as HTMLElement);
+      expect(style.whiteSpace).toBe('pre-wrap');
+    });
+
+    it('renders the empty-state when content is null', () => {
+      fixture.componentRef.setInput('task', makeTask({ content: null }));
+      fixture.detectChanges();
+
+      const empty = fixture.debugElement.query(
+        By.css('.task-detail-panel__description-empty')
+      );
+      expect(empty).toBeTruthy();
+      expect(empty.nativeElement.textContent.trim()).toBe('No description yet.');
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__description'))
+      ).toBeNull();
+    });
+
+    it('renders the empty-state when content is whitespace-only', () => {
+      fixture.componentRef.setInput('task', makeTask({ content: '   \n  ' }));
+      fixture.detectChanges();
+
+      const empty = fixture.debugElement.query(
+        By.css('.task-detail-panel__description-empty')
+      );
+      expect(empty).toBeTruthy();
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__description'))
+      ).toBeNull();
+    });
+
+    it('no longer renders the placeholder badge', () => {
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__placeholder-badge'))
+      ).toBeNull();
+    });
+
+    it('updates the rendered description when the task input changes', () => {
+      fixture.componentRef.setInput('task', makeTask({ id: 't-A', content: 'task A prose' }));
+      fixture.detectChanges();
+
+      let desc = fixture.debugElement.query(
+        By.css('.task-detail-panel__description')
+      );
+      expect(desc.nativeElement.textContent.trim()).toBe('task A prose');
+
+      fixture.componentRef.setInput('task', makeTask({ id: 't-B', content: null }));
+      fixture.detectChanges();
+
+      expect(
+        fixture.debugElement.query(By.css('.task-detail-panel__description'))
+      ).toBeNull();
+      const empty = fixture.debugElement.query(
+        By.css('.task-detail-panel__description-empty')
+      );
+      expect(empty).toBeTruthy();
+      expect(empty.nativeElement.textContent.trim()).toBe('No description yet.');
+    });
+
+    it('wires the Description section heading id to aria-labelledby on the section', () => {
+      fixture.componentRef.setInput('task', makeTask({ id: 't-1', content: 'x' }));
+      fixture.detectChanges();
+
+      const heading = fixture.debugElement.query(
+        By.css('.task-detail-panel__description')
+      ).nativeElement.closest('section') as HTMLElement;
+      const headingEl = heading.querySelector(
+        '.task-detail-panel__section-label'
+      ) as HTMLElement;
+      expect(headingEl.id).toBe('task-detail-description-t-1');
+      expect(heading.getAttribute('aria-labelledby')).toBe(
+        'task-detail-description-t-1'
+      );
+    });
   });
 
   describe('upload rows', () => {
