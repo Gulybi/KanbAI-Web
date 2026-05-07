@@ -1,0 +1,201 @@
+<fieldset class="column-draft-list" [disabled]="disabled()">
+  <legend class="column-draft-list__legend">Initial columns</legend>
+  <p class="column-draft-list__legend-caption">
+    These become the columns of your new board.
+  </p>
+
+  @if (columnGroups().length === 0) {
+    <div class="column-draft-list__empty" role="note">
+      <p class="column-draft-list__empty-copy">
+        Add at least one column to continue.
+      </p>
+    </div>
+  } @else {
+    <ol
+      class="column-draft-list__list"
+      cdkDropList
+      (cdkDropListDropped)="onDrop($event)"
+    >
+      @for (
+        group of columnGroups();
+        track trackByGroup($index, group);
+        let i = $index
+      ) {
+        <li
+          class="column-draft-list__row"
+          [class.column-draft-list__row--duplicate]="duplicateFlags().has(i)"
+          cdkDrag
+          [cdkDragDisabled]="disabled()"
+        >
+          <span
+            class="column-draft-list__drag-handle"
+            cdkDragHandle
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="dragHandleLabel(i)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="9" cy="5" r="1"></circle>
+              <circle cx="9" cy="12" r="1"></circle>
+              <circle cx="9" cy="19" r="1"></circle>
+              <circle cx="15" cy="5" r="1"></circle>
+              <circle cx="15" cy="12" r="1"></circle>
+              <circle cx="15" cy="19" r="1"></circle>
+            </svg>
+          </span>
+
+          <div class="column-draft-list__name" #nameInput>
+            <app-form-input
+              [label]="labelFor(i)"
+              placeholder="Column name"
+              [required]="true"
+              [control]="group.controls.name"
+            ></app-form-input>
+          </div>
+
+          <button
+            type="button"
+            class="column-draft-list__reorder column-draft-list__reorder--up"
+            [attr.aria-label]="moveUpLabel(i)"
+            [disabled]="i === 0 || disabled()"
+            (click)="moveUp(i)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+            <span class="column-draft-list__reorder-label">Move up</span>
+          </button>
+
+          <button
+            type="button"
+            class="column-draft-list__reorder column-draft-list__reorder--down"
+            [attr.aria-label]="moveDownLabel(i)"
+            [disabled]="i === columnGroups().length - 1 || disabled()"
+            (click)="moveDown(i)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            <span class="column-draft-list__reorder-label">Move down</span>
+          </button>
+
+          <button
+            type="button"
+            class="column-draft-list__remove"
+            [attr.aria-label]="removeLabel(i)"
+            [disabled]="disabled()"
+            (click)="removeColumn(i)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+
+          @if (duplicateFlags().has(i)) {
+            <div
+              class="column-draft-list__duplicate-hint"
+              role="alert"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <span>This name matches another column.</span>
+            </div>
+          }
+        </li>
+      }
+    </ol>
+  }
+
+  <button
+    #addButton
+    type="button"
+    class="column-draft-list__add"
+    aria-label="Add column"
+    [disabled]="disabled()"
+    (click)="addColumn()"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="12" y1="5" x2="12" y2="19"></line>
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+    </svg>
+    <span>Add column</span>
+  </button>
+
+  <div
+    class="column-draft-list__live"
+    aria-live="polite"
+    aria-atomic="true"
+  >
+    {{ liveMessage() }}
+  </div>
+</fieldset>

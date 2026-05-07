@@ -138,17 +138,26 @@
       border-color $motion-fast,
       box-shadow $motion-fast;
 
-    &:hover {
+    &:hover:not(:disabled) {
       background-color: $bg-sidebar-light;
     }
 
-    &:active {
+    &:active:not(:disabled) {
       background-color: $bg-sidebar-light;
     }
 
     &:focus-visible {
       outline: 2px solid $brand-primary;
       outline-offset: 2px;
+    }
+
+    // Disabled during submit — design spec §3.2 / design call #4.
+    &:disabled {
+      color: $text-tertiary;
+      border-color: $border-light;
+      background: transparent;
+      cursor: not-allowed;
+      opacity: 0.6;
     }
   }
 

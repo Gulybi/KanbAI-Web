@@ -21,3 +21,21 @@ export interface ColumnResponseDto {
 
 /** Envelope alias for list endpoint. */
 export type ColumnsListResponse = ApiResponse<ColumnResponseDto[]>;
+
+/**
+ * Backend `CreateColumnDto` shape — mirrors
+ * .claude/backend_api_map.md lines 252-256.
+ *
+ * `colorCode` is optional and explicitly omitted by issue #70 (no color
+ * picker in scope per context line 171). `columnOrder` is passed by #70
+ * as 0..N-1 to make ordering deterministic without depending on the
+ * backend's ordering of successive creates.
+ */
+export interface CreateColumnDto {
+  name: string;
+  colorCode?: string | null;
+  columnOrder?: number | null;
+}
+
+/** Envelope alias for the single-DTO create response. */
+export type ColumnCreateResponse = ApiResponse<ColumnResponseDto>;

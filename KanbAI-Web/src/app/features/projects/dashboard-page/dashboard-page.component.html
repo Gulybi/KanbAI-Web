@@ -28,4 +28,13 @@
       }
     }
   </div>
+
+  @if (partialFailureToast(); as toast) {
+    <app-partial-failure-toast
+      [projectName]="toast.project.name"
+      [message]="toast.message"
+      (openBoard)="onPartialToastOpenBoard()"
+      (dismiss)="onPartialToastDismiss()"
+    ></app-partial-failure-toast>
+  }
 </main>
