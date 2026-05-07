@@ -4,6 +4,7 @@ import {
   DestroyRef,
   EnvironmentInjector,
   OnInit,
+  Signal,
   ViewEncapsulation,
   computed,
   inject,
@@ -14,12 +15,14 @@ import { CommonModule } from '@angular/common';
 import {
   FormArray,
   FormControl,
+  FormControlStatus,
   FormGroup,
   ReactiveFormsModule,
   Validators
 } from '@angular/forms';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { DialogRef } from '@angular/cdk/dialog';
+import { startWith } from 'rxjs';
 
 import { FormInputComponent } from '../../../auth/components/form-input/form-input.component';
 import { FormButtonComponent } from '../../../auth/components/form-button/form-button.component';
@@ -98,8 +101,13 @@ export class CreateProjectDialogComponent implements OnInit {
     columns: this.buildColumnsArray()
   });
 
+  protected readonly formStatus: Signal<FormControlStatus> = toSignal(
+    this.form.statusChanges.pipe(startWith(this.form.status)),
+    { requireSync: true }
+  );
+
   protected readonly canSubmit = computed(
-    () => !this.submitting() && !this.form.invalid
+    () => !this.submitting() && this.formStatus() === 'VALID'
   );
 
   protected get nameControl(): FormControl<string> {

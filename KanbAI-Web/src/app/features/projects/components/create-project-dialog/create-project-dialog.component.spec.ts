@@ -105,6 +105,7 @@ interface InternalDialog {
   submitting: () => boolean;
   errorMessage: () => string | null;
   partialFailureNames: () => string[];
+  canSubmit: () => boolean;
   onSubmit: () => void;
   onCancel: () => void;
 }
@@ -562,5 +563,44 @@ describe('CreateProjectDialogComponent', () => {
     expect(form.controls.columns.valid).toBe(true);
     expect(form.valid).toBe(true);
     expect(form.invalid).toBe(false);
+  });
+
+  // ------------------------------------------------------------------
+  // Regression tests for issue #80
+  // (permanently-disabled "Create project" submit button)
+  // ------------------------------------------------------------------
+
+  describe('submit-gating reactivity (regression: issue #80)', () => {
+    it('flips canSubmit to true when a valid name is set after mount', () => {
+      // Before any input: form is invalid (name is required) → canSubmit is false.
+      expect(internal(component).canSubmit()).toBe(false);
+
+      // Setting a valid name flips the form to VALID. The bug (pre-fix) was that
+      // canSubmit was a computed() reading the non-signal form.invalid getter —
+      // so it memoized false on first evaluation and never re-invalidated.
+      const form = internal(component).form;
+      form.controls.name.setValue('Website Redesign');
+      fixture.detectChanges();
+
+      expect(internal(component).canSubmit()).toBe(true);
+    });
+
+    it('invokes ProjectCreationService.createProjectWithColumns exactly once when submitting a valid form', () => {
+      const form = internal(component).form;
+      form.controls.name.setValue('  Website Redesign  ');
+      fixture.detectChanges();
+
+      // canSubmit must be true for the real button click path to fire.
+      expect(internal(component).canSubmit()).toBe(true);
+
+      internal(component).onSubmit();
+
+      expect(projectCreation.createProjectWithColumns).toHaveBeenCalledTimes(1);
+      expect(projectCreation.createProjectWithColumns).toHaveBeenCalledWith({
+        name: 'Website Redesign',
+        description: null,
+        columnNames: ['To Do', 'In Progress', 'Done']
+      });
+    });
   });
 });
