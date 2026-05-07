@@ -19,6 +19,7 @@ import {
   OptimisticMoveToken
 } from './board-state.model';
 import { TaskResponseDto } from '../models/task.model';
+import { ColumnResponseDto } from '../models/column.model';
 
 /**
  * Board-scope state + realtime reconciler.
@@ -149,23 +150,39 @@ export class BoardStateService extends BaseStateService<BoardState> {
    * Dedupe by id. Maintains `columnOrder` ascending.
    */
   private onColumnCreated(evt: ColumnCreatedEvent): void {
-    if (!evt || evt.projectId !== this.getState().currentProjectId) {
+    if (!evt || typeof evt.projectId !== 'string') {
+      return;
+    }
+    this.appendBoardColumnIfNew(evt.projectId, {
+      id: evt.id,
+      name: evt.name,
+      colorCode: evt.colorCode,
+      columnOrder: evt.columnOrder,
+      projectId: evt.projectId
+    });
+  }
+
+  /**
+   * Shared append-if-new helper used by both the SignalR `ColumnCreated`
+   * handler (`onColumnCreated`) and the HTTP-success entry point
+   * (`applyCreatedColumn`). Guarantees the two paths follow identical
+   * project-guard, id-dedupe, and sort-by-`columnOrder` semantics — so a
+   * client's own create + SignalR echo of that create never double-insert.
+   */
+  private appendBoardColumnIfNew(
+    projectId: string,
+    column: BoardColumn
+  ): void {
+    if (projectId !== this.getState().currentProjectId) {
       return;
     }
     const current = this.getState().columns;
-    if (current.some(c => c.id === evt.id)) {
+    if (current.some(c => c.id === column.id)) {
       return;
     }
-    const next = [
-      ...current,
-      {
-        id: evt.id,
-        name: evt.name,
-        colorCode: evt.colorCode,
-        columnOrder: evt.columnOrder,
-        projectId: evt.projectId
-      }
-    ].sort((a, b) => a.columnOrder - b.columnOrder);
+    const next = [...current, column].sort(
+      (a, b) => a.columnOrder - b.columnOrder
+    );
     this.setState({ columns: next });
   }
 
@@ -264,6 +281,35 @@ export class BoardStateService extends BaseStateService<BoardState> {
   }
 
   // ------------------- HTTP-driven mutations (issue #47) -------------------
+
+  /**
+   * Public entry point for HTTP-driven column creates (issue #77). The
+   * caller passes the full `ColumnResponseDto` returned by
+   * `ColumnsApiService.createColumn`; the method projects it down to a
+   * {@link BoardColumn} (dropping `createdAt` / `updatedAt` — same
+   * projection as `BoardPageComponent.projectColumnDtos`) and delegates to
+   * the shared {@link appendBoardColumnIfNew} helper so this path and the
+   * SignalR echo path agree on dedupe semantics.
+   *
+   * Behaviour:
+   *  - No-op when `projectId !== currentProjectId` (user navigated away).
+   *  - No-op when a column with the same id is already in state (idempotent;
+   *    makes the HTTP-success + SignalR-echo sequence safe on the client's
+   *    own create).
+   *  - Otherwise appends and re-sorts by `columnOrder` ascending.
+   */
+  applyCreatedColumn(projectId: string, dto: ColumnResponseDto): void {
+    if (!dto) {
+      return;
+    }
+    this.appendBoardColumnIfNew(projectId, {
+      id: dto.id,
+      name: dto.name,
+      colorCode: dto.colorCode,
+      columnOrder: dto.columnOrder,
+      projectId: dto.projectId
+    });
+  }
 
   /**
    * Replace the column list for the current board. Called by

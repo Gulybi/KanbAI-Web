@@ -1,0 +1,231 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/layout' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+  font-family: $font-family-base;
+  color: $text-primary;
+}
+
+// ---- Form surface ----------------------------------------------------
+// Rendered inside either the empty-state panel or the trailing slot.
+// Width is column-shaped when in the trailing slot; full-width inside
+// the empty-state panel (the panel itself caps the reach).
+.board-add-column {
+  display: flex;
+  flex-direction: column;
+  gap: $space-md;
+
+  padding: $space-md;
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+
+  // Mount animation — fade + minuscule translate so the form doesn't
+  // just pop. Duration $motion-base. Transform + opacity only.
+  animation: board-add-column-in $motion-base both;
+
+  // Parent slot controls width. Inside the trailing slot, the parent
+  // pins width to $kanban-column-width via .board-page__trailing-slot.
+  // Inside the empty-state panel, parent is .board-page__empty-panel
+  // which caps at 480px and the form fills it.
+  width: 100%;
+}
+
+@keyframes board-add-column-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+// ---- Per-field duplicate-name hint -----------------------------------
+// Surfaces the `duplicateExisting` error from the custom validator — the
+// shared FormInputComponent only renders required/whitespace/maxLength
+// copy, so this is the component-local surface for the duplicate case.
+// Sized to match FormInputComponent's own inline errors (xs font, status
+// colour, tight rhythm) so the user sees a single coherent error band.
+.board-add-column__field-error {
+  margin: $space-xxs 0 0 0;
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+  color: $status-high;
+}
+
+// ---- Inline error paragraph ------------------------------------------
+// Sized to the form column (never full-board-width banner). Paired with
+// $status-high left accent AND text AND icon (KanbAI rule: never colour
+// alone). Role=alert announces to screen readers.
+.board-add-column__error {
+  display: flex;
+  align-items: flex-start;
+  gap: $space-xs;
+
+  margin: 0;
+  padding: $space-xs $space-sm;
+
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-high;
+  border-radius: $radius-sm;
+
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  // Paired icon (rendered via ::before to keep the template clean — it's
+  // a decorative warning glyph, aria-hidden semantics handled at the
+  // DOM level where the paragraph already has role="alert"). Icon uses
+  // $status-high so the colour signal is present, text is the primary
+  // channel.
+  &::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    background: currentColor;
+    color: $status-high;
+    // Inline SVG mask — exclamation-triangle. Keeps us off icon-font deps.
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 1.333 14.667 12.8H1.333L8 1.333Zm0 4.8v3.2h.667v-3.2H8Zm-.333 4.534v.666h1v-.666h-1Z'/></svg>");
+    mask-repeat: no-repeat;
+    mask-size: 14px 14px;
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 1.333 14.667 12.8H1.333L8 1.333Zm0 4.8v3.2h.667v-3.2H8Zm-.333 4.534v.666h1v-.666h-1Z'/></svg>");
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 14px 14px;
+  }
+}
+
+// ---- Actions row -----------------------------------------------------
+.board-add-column__actions {
+  display: flex;
+  align-items: center;
+  gap: $space-xs;
+
+  // Mobile: stack full-width, submit on top for thumb reach.
+  @media (max-width: #{$bp-md - 1px}) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: $space-xs;
+  }
+}
+
+// ---- Submit ("Add" / "Adding…") button -------------------------------
+.board-add-column__submit {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xxs;
+
+  min-height: 36px;
+  padding: $space-xs $space-md;
+
+  background: $brand-primary;
+  color: $text-inverse;
+  border: 1px solid $brand-primary;
+  border-radius: $radius-md;
+
+  font-family: $font-family-base;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    color            $motion-fast,
+    transform        $motion-fast;
+
+  &:hover:not(:disabled) {
+    background: $brand-primary-hover;
+    border-color: $brand-primary-hover;
+  }
+
+  // Active — brief press feedback. Transform only, never top/left.
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    background: $brand-primary-light;
+    border-color: $brand-primary-light;
+    color: $text-tertiary;
+    cursor: not-allowed;
+  }
+
+  // Touch target — meet 44×44 on coarse pointers.
+  @media (pointer: coarse) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  @media (max-width: #{$bp-md - 1px}) {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+
+// ---- Cancel button (secondary / ghost) -------------------------------
+.board-add-column__cancel {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 36px;
+  padding: $space-xs $space-md;
+
+  background: transparent;
+  color: $text-secondary;
+  border: 1px solid $border-light;
+  border-radius: $radius-md;
+
+  font-family: $font-family-base;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-tight;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    color            $motion-fast;
+
+  &:hover:not(:disabled) {
+    background: $bg-sidebar-light;
+    color: $text-primary;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    color: $text-tertiary;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  @media (pointer: coarse) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  @media (max-width: #{$bp-md - 1px}) {
+    min-height: 44px;
+    width: 100%;
+  }
+}

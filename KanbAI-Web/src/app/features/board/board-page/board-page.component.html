@@ -47,6 +47,37 @@
         <p class="board-page__load-error-body">{{ columnLoadError() }}</p>
       </div>
     </div>
+  } @else if (columns().length === 0) {
+    <div class="board-page__empty">
+      <div
+        class="board-page__empty-panel"
+        role="region"
+        aria-label="Empty board"
+      >
+        <h2 class="board-page__empty-heading">This board has no columns yet</h2>
+        <p class="board-page__empty-body">
+          Add your first column to start planning tasks.
+        </p>
+        @if (addColumnMode() === 'closed') {
+          <button
+            #emptyStateAddButton
+            type="button"
+            class="board-page__empty-add"
+            (click)="openAddColumnFlow()"
+          >
+            Add column
+          </button>
+        } @else {
+          <app-board-add-column
+            [existingColumnNames]="existingColumnNames()"
+            [submitting]="createColumnSubmitting()"
+            [submitError]="createColumnError()"
+            (submitted)="handleAddColumnSubmit($event)"
+            (cancelled)="handleAddColumnCancel()"
+          />
+        }
+      </div>
+    </div>
   } @else {
     <div class="board-page__columns" cdkDropListGroup>
       @for (column of columns(); track column.id) {
@@ -61,6 +92,27 @@
           (taskOpened)="handleTaskOpened($event)"
         />
       }
+      <div class="board-page__trailing-slot">
+        @if (addColumnMode() === 'closed') {
+          <button
+            #trailingAddButton
+            type="button"
+            class="board-page__trailing-add"
+            aria-label="Add column"
+            (click)="openAddColumnFlow()"
+          >
+            <span>Add column</span>
+          </button>
+        } @else {
+          <app-board-add-column
+            [existingColumnNames]="existingColumnNames()"
+            [submitting]="createColumnSubmitting()"
+            [submitError]="createColumnError()"
+            (submitted)="handleAddColumnSubmit($event)"
+            (cancelled)="handleAddColumnCancel()"
+          />
+        }
+      </div>
     </div>
   }
 

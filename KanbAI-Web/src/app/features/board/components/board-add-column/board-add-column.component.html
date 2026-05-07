@@ -1,0 +1,45 @@
+<form
+  class="board-add-column"
+  aria-label="Add column"
+  (submit)="onSubmit($event)"
+  (keydown)="onKeydown($event)"
+>
+  <div #nameWrap>
+    <app-form-input
+      label="Column name"
+      placeholder="e.g. Blocked"
+      [required]="true"
+      [control]="nameControl"
+    />
+    @if (
+      nameControl.errors?.['duplicateExisting'] &&
+      (nameControl.dirty || nameControl.touched)
+    ) {
+      <p class="board-add-column__field-error" role="alert">
+        A column with this name already exists.
+      </p>
+    }
+  </div>
+
+  @if (submitError()) {
+    <p class="board-add-column__error" role="alert">{{ submitError() }}</p>
+  }
+
+  <div class="board-add-column__actions">
+    <button
+      type="submit"
+      class="board-add-column__submit"
+      [disabled]="nameControl.invalid || submitting()"
+    >
+      {{ submitting() ? 'Adding…' : 'Add' }}
+    </button>
+    <button
+      type="button"
+      class="board-add-column__cancel"
+      [disabled]="submitting()"
+      (click)="onCancel()"
+    >
+      Cancel
+    </button>
+  </div>
+</form>

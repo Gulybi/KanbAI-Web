@@ -196,6 +196,224 @@
   border: 0;
 }
 
+// ---- Empty-state panel (0-column branch, issue #77) --------------------
+// Mirrors .board-page__load-error centering, but the panel surface is
+// neutral (no $status-high accent). This is an informational empty
+// state, not an alert.
+.board-page__empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $space-xxl $content-padding;
+
+  // Panel mount animation — quiet fade-in over $motion-base.
+  // Matches the load-error panel's visual calm.
+  animation: board-page-empty-in $motion-base both;
+}
+
+@keyframes board-page-empty-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+.board-page__empty-panel {
+  max-width: 480px;
+  width: 100%;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $space-md;
+
+  padding: $space-xl;
+
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+
+  text-align: left;
+
+  // Tablet-and-up: slightly wider panel feels right in a bigger viewport.
+  @include respond-to('lg') {
+    max-width: 560px;
+  }
+
+  // Mobile: panel fills available width minus page padding; internal
+  // padding relaxes one notch.
+  @media (max-width: #{$bp-md - 1px}) {
+    padding: $space-lg;
+    gap: $space-sm;
+  }
+}
+
+.board-page__empty-heading {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $text-primary;
+}
+
+.board-page__empty-body {
+  margin: 0;
+  font-size: $font-size-md;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+}
+
+// ---- Empty-state primary CTA ("Add column") ----------------------------
+// Same visual contract as the inline form's primary submit button —
+// $brand-primary fill, $text-inverse label — but rendered on the panel
+// surface not the form surface. Users who flow from CTA to submit see
+// the same button treatment, reinforcing continuity.
+.board-page__empty-add {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  align-self: flex-start;
+  min-height: 40px;
+  padding: $space-xs $space-lg;
+
+  background: $brand-primary;
+  color: $text-inverse;
+  border: 1px solid $brand-primary;
+  border-radius: $radius-md;
+
+  font-family: $font-family-base;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    transform        $motion-fast;
+
+  &:hover:not(:disabled) {
+    background: $brand-primary-hover;
+    border-color: $brand-primary-hover;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    background: $brand-primary-light;
+    border-color: $brand-primary-light;
+    color: $text-tertiary;
+    cursor: not-allowed;
+  }
+
+  @media (pointer: coarse) {
+    min-height: 44px;
+  }
+
+  @media (max-width: #{$bp-md - 1px}) {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+// ---- Trailing slot (N-column branch, issue #77) ------------------------
+// Lives inside the existing cdkDropListGroup strip. Width pinned to the
+// same $kanban-column-width used by BoardColumnComponent so the
+// affordance reads as a peer-shaped slot. When the form mounts, the
+// slot retains its width → columns don't jump.
+// The slot is NOT a cdkDropList target (no drag-drop).
+.board-page__trailing-slot {
+  flex: 0 0 $kanban-column-width;
+  width: $kanban-column-width;
+  // Inherits scroll-snap-align: start from parent's `> *` rule.
+  // Inherits align-self: flex-start from parent's align-items.
+  min-height: 56px;
+}
+
+// ---- Trailing add button -----------------------------------------------
+// Ghost / dashed treatment — reads as secondary to the $brand-primary
+// column headers it sits beside. Hover lifts to a soft $brand-primary-
+// light tint and promotes the dashed border to $border-dropzone (the
+// same colour CDK drop targets use) — intentional vocabulary echo: this
+// is a "receptive" zone, just for column creation not for drop.
+.board-page__trailing-add {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xs;
+
+  width: 100%;
+  min-height: 56px;
+  padding: $space-md;
+
+  background: transparent;
+  color: $text-brand;
+  border: 1px dashed $border-light;
+  border-radius: $radius-lg;
+
+  font-family: $font-family-base;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-tight;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    color            $motion-fast,
+    box-shadow       $motion-fast;
+
+  // Plus-glyph rendered via ::before (decorative, aria-hidden via
+  // DOM — button has a visible text label so no extra aria-label needed).
+  &::before {
+    content: '+';
+    display: inline-block;
+    width: 1em;
+    font-size: $font-size-lg;
+    font-weight: $font-weight-semibold;
+    line-height: 1;
+  }
+
+  &:hover:not(:disabled) {
+    background: $brand-primary-light;
+    border-color: $border-dropzone;
+    border-style: solid;
+    color: $text-primary;
+    box-shadow: $shadow-card-hover;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    border-color: $border-dropzone;
+  }
+
+  &:disabled {
+    color: $text-tertiary;
+    border-color: $border-light;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  @media (pointer: coarse) {
+    min-height: 56px;
+  }
+}
+
 // ---- Reduced-motion fallback --------------------------------------------
 // Global _motion.scss already clamps transitions/animations to 0.01ms;
 // no per-component override needed. Instant state change still fires.
