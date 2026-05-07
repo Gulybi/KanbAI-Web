@@ -243,6 +243,49 @@ describe('MembersDialogComponent', () => {
     expect(vm.resetCounter).toBe(1);
   });
 
+  // Regression guard for issue #68: a 401 on the invite path used to be
+  // intercepted globally as "session expired" and redirect to /login,
+  // unmounting the dialog. With the interceptor narrowed, the dialog must
+  // stay mounted, surface the mapped 401 copy inline, mirror it to the
+  // polite live region, and leave AuthService.logout() uninvoked.
+  it('onAddSubmit 401 keeps dialog mounted, sets addError + liveMessage, does not call logout (issue #68)', async () => {
+    const sessionExpiredCopy = 'Your session has expired. Please sign in again.';
+    const { fixture, component, membersState, dialogRef } = await mount({
+      addImpl: () => throwError(() => new Error(sessionExpiredCopy))
+    });
+    const authService = TestBed.inject(AuthService) as unknown as { logout: () => void };
+    const logoutSpy = vi.spyOn(authService, 'logout');
+    membersState.sliceSig.set({
+      members: [makeMember({ userId: 'u-self', role: 'Owner', name: 'Self' })],
+      isLoading: false,
+      error: null,
+      hasLoaded: true
+    });
+    fixture.detectChanges();
+
+    (component as unknown as { onAddSubmit: (e: string) => void }).onAddSubmit('x@y.com');
+    fixture.detectChanges();
+
+    // Dialog remained mounted: the add-form is still in the DOM and no
+    // dialogRef.close was issued.
+    expect(fixture.nativeElement.querySelector('app-add-member-form')).toBeTruthy();
+    expect(dialogRef.close).not.toHaveBeenCalled();
+
+    // Inline copy surfaced via the add-form's errorMessage input.
+    const addFormDebug = fixture.debugElement.query(By.css('app-add-member-form'));
+    expect((addFormDebug.componentInstance as { errorMessage: string | null }).errorMessage).toBe(
+      sessionExpiredCopy
+    );
+
+    // Polite live region mirrors the same copy for AT users.
+    expect(
+      (component as unknown as { liveMessage: () => string }).liveMessage()
+    ).toBe(sessionExpiredCopy);
+
+    // Global logout must NOT have been called — this is the core of the fix.
+    expect(logoutSpy).not.toHaveBeenCalled();
+  });
+
   it('onAddSubmit 403 flips roleRevoked and hides the add-form', async () => {
     const { fixture, component, membersState } = await mount({
       addImpl: () => throwError(() => new Error('Only the project owner can add members.'))
