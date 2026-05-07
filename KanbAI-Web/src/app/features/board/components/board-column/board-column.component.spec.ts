@@ -39,8 +39,14 @@ function makeTask(partial?: Partial<BoardTask>): BoardTask {
       [tasks]="tasks"
       [connectedDropListIds]="connectedDropListIds"
       [activeTaskId]="activeTaskId"
+      [addTaskOpen]="addTaskOpen"
+      [addTaskSubmitting]="addTaskSubmitting"
+      [addTaskError]="addTaskError"
       (taskDropped)="onDropped($event)"
       (taskOpened)="onOpened($event)"
+      (addTaskRequested)="onAddTaskRequested()"
+      (addTaskSubmitted)="onAddTaskSubmitted($event)"
+      (addTaskCancelled)="onAddTaskCancelled()"
     />
   `
 })
@@ -49,8 +55,14 @@ class BoardColumnHostComponent {
   tasks: BoardTask[] = [];
   connectedDropListIds: string[] = [];
   activeTaskId: string | null = null;
+  addTaskOpen = false;
+  addTaskSubmitting = false;
+  addTaskError: string | null = null;
   dropped: CdkDragDrop<BoardTask[]> | null = null;
   opened: BoardTask | null = null;
+  addTaskRequestedCount = 0;
+  addTaskSubmittedValues: string[] = [];
+  addTaskCancelledCount = 0;
 
   onDropped(event: CdkDragDrop<BoardTask[]>): void {
     this.dropped = event;
@@ -58,6 +70,18 @@ class BoardColumnHostComponent {
 
   onOpened(task: BoardTask): void {
     this.opened = task;
+  }
+
+  onAddTaskRequested(): void {
+    this.addTaskRequestedCount++;
+  }
+
+  onAddTaskSubmitted(title: string): void {
+    this.addTaskSubmittedValues.push(title);
+  }
+
+  onAddTaskCancelled(): void {
+    this.addTaskCancelledCount++;
   }
 }
 
@@ -172,6 +196,70 @@ describe('BoardColumnComponent', () => {
       dropList.dropped.emit(fakeEvent);
 
       expect(host.dropped).toBe(fakeEvent);
+    });
+  });
+
+  describe('Add-task footer slot (issue #78)', () => {
+    it('renders the "Add task" trigger by default (addTaskOpen=false)', () => {
+      fixture.detectChanges();
+      const trigger = fixture.debugElement.query(By.css('.board-column__add-task'));
+      expect(trigger).toBeTruthy();
+      expect(trigger.nativeElement.textContent?.trim()).toBe('Add task');
+    });
+
+    it('renders the inline <app-board-add-task> when addTaskOpen=true', () => {
+      host.addTaskOpen = true;
+      fixture.detectChanges();
+      const form = fixture.debugElement.query(By.css('app-board-add-task'));
+      const trigger = fixture.debugElement.query(By.css('.board-column__add-task'));
+      expect(form).toBeTruthy();
+      expect(trigger).toBeNull();
+    });
+
+    it('trigger aria-label is "Add task to <column name>"', () => {
+      host.column = makeColumn({ name: 'In Progress' });
+      fixture.detectChanges();
+      const trigger = fixture.debugElement.query(By.css('.board-column__add-task'));
+      expect(trigger.nativeElement.getAttribute('aria-label')).toBe(
+        'Add task to In Progress'
+      );
+    });
+
+    it('clicking the trigger emits addTaskRequested', () => {
+      fixture.detectChanges();
+      const trigger = fixture.debugElement.query(By.css('.board-column__add-task'));
+      trigger.nativeElement.click();
+      expect(host.addTaskRequestedCount).toBe(1);
+    });
+
+    it('forwards the child BoardAddTaskComponent submitted event as addTaskSubmitted', () => {
+      host.addTaskOpen = true;
+      fixture.detectChanges();
+      const formDe = fixture.debugElement.query(By.css('app-board-add-task'));
+      // Drive the child output via its component instance.
+      formDe.componentInstance.submitted.emit('Wire up onboarding flow');
+      expect(host.addTaskSubmittedValues).toEqual(['Wire up onboarding flow']);
+    });
+
+    it('forwards the child BoardAddTaskComponent cancelled event as addTaskCancelled', () => {
+      host.addTaskOpen = true;
+      fixture.detectChanges();
+      const formDe = fixture.debugElement.query(By.css('app-board-add-task'));
+      formDe.componentInstance.cancelled.emit();
+      expect(host.addTaskCancelledCount).toBe(1);
+    });
+
+    it('renders the trigger with a stable DOM id "add-task-trigger-<columnId>"', () => {
+      fixture.detectChanges();
+      const trigger = fixture.debugElement.query(By.css('.board-column__add-task'));
+      expect(trigger.nativeElement.id).toBe('add-task-trigger-col-1');
+    });
+
+    it('trigger id is derived from column.id', () => {
+      host.column = makeColumn({ id: 'col-xyz' });
+      fixture.detectChanges();
+      const trigger = fixture.debugElement.query(By.css('.board-column__add-task'));
+      expect(trigger.nativeElement.id).toBe('add-task-trigger-col-xyz');
     });
   });
 });

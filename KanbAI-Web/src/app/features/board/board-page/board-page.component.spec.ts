@@ -31,6 +31,7 @@ interface BoardStateMock {
   rollbackOptimisticTaskMove: ReturnType<typeof vi.fn>;
   reconcileServerTaskMove: ReturnType<typeof vi.fn>;
   applyCreatedColumn: ReturnType<typeof vi.fn>;
+  applyCreatedTask: ReturnType<typeof vi.fn>;
 }
 
 interface ColumnsApiMock {
@@ -40,6 +41,7 @@ interface ColumnsApiMock {
 
 interface TasksApiMock {
   moveTask: ReturnType<typeof vi.fn>;
+  createTask: ReturnType<typeof vi.fn>;
 }
 
 interface AttachmentsStateMock {
@@ -122,6 +124,34 @@ function createMockBoardState(): BoardStateMock {
         ].sort((a, b) => a.columnOrder - b.columnOrder);
         columns.set(next);
       }
+    ),
+    applyCreatedTask: vi.fn(
+      (projectId: string, dto: TaskResponseDto): void => {
+        if (currentProjectId() !== projectId) {
+          return;
+        }
+        const columnExists = columns().some(c => c.id === dto.columnId);
+        if (!columnExists) {
+          return;
+        }
+        const current = tasksByColumnId();
+        const bucket = current[dto.columnId] ?? [];
+        if (bucket.some(t => t.id === dto.id)) {
+          return;
+        }
+        const appended = [
+          ...bucket,
+          {
+            id: dto.id,
+            title: dto.title,
+            content: dto.content,
+            taskOrder: dto.taskOrder,
+            columnId: dto.columnId,
+            assignedId: dto.assignedId
+          }
+        ].sort((a, b) => a.taskOrder - b.taskOrder);
+        tasksByColumnId.set({ ...current, [dto.columnId]: appended });
+      }
     )
   };
 }
@@ -147,9 +177,25 @@ function createMockColumnsApi(
   };
 }
 
-function createMockTasksApi(result: Observable<TaskResponseDto>): TasksApiMock {
+function createMockTasksApi(
+  result: Observable<TaskResponseDto>,
+  createResult?: Observable<TaskResponseDto>
+): TasksApiMock {
   return {
-    moveTask: vi.fn().mockReturnValue(result)
+    moveTask: vi.fn().mockReturnValue(result),
+    createTask: vi.fn().mockReturnValue(
+      createResult ??
+        of({
+          id: 't-new',
+          title: 'New task',
+          content: null,
+          taskOrder: 0,
+          columnId: 'col-1',
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        } as TaskResponseDto)
+    )
   };
 }
 
@@ -165,6 +211,7 @@ interface MountOptions {
   columnsApiResult?: Observable<ColumnResponseDto[]>;
   createColumnResult?: Observable<ColumnResponseDto>;
   tasksApiResult?: Observable<TaskResponseDto>;
+  createTaskResult?: Observable<TaskResponseDto>;
 }
 
 async function mount(options: MountOptions = {}): Promise<{
@@ -192,7 +239,8 @@ async function mount(options: MountOptions = {}): Promise<{
         assignedId: null,
         createdAt: '',
         updatedAt: ''
-      })
+      }),
+    options.createTaskResult
   );
   const attachmentsState = createMockAttachmentsState();
 
@@ -1099,6 +1147,298 @@ describe('BoardPageComponent', () => {
           });
           pending.complete();
         }).not.toThrow();
+      });
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #78 — Add-task from board view (per-column inline form)
+  // ----------------------------------------------------------------------
+
+  describe('Add-task flow (issue #78)', () => {
+    function makeCreatedTask(partial?: Partial<TaskResponseDto>): TaskResponseDto {
+      return {
+        id: 't-new',
+        title: 'Wire up onboarding flow',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: '',
+        ...partial
+      };
+    }
+
+    describe('openAddTaskFlow', () => {
+      it('opens the slot and clears any prior error', async () => {
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1', name: 'To Do' })])
+        });
+        fixture.detectChanges();
+
+        // Seed a prior error to ensure openAddTaskFlow clears it.
+        component.taskDrafts.set({
+          'col-1': { open: false, submitting: false, error: 'stale error' }
+        });
+
+        component.openAddTaskFlow('col-1');
+        expect(component.draftFor('col-1')).toEqual({
+          open: true,
+          submitting: false,
+          error: null
+        });
+      });
+
+      it('per-column independence: opening column A does not touch column B', async () => {
+        const { fixture, component } = await mount({
+          columnsApiResult: of([
+            makeColumnDto({ id: 'col-A', name: 'A' }),
+            makeColumnDto({ id: 'col-B', name: 'B' })
+          ])
+        });
+        fixture.detectChanges();
+
+        component.openAddTaskFlow('col-A');
+        component.taskDrafts.update(current => ({
+          ...current,
+          'col-B': { open: true, submitting: false, error: null }
+        }));
+
+        component.openAddTaskFlow('col-A'); // re-open A — should leave B untouched.
+        expect(component.draftFor('col-A').open).toBe(true);
+        expect(component.draftFor('col-B').open).toBe(true);
+      });
+    });
+
+    describe('handleAddTaskSubmit — success', () => {
+      it('issues a single POST with { title } only (no content, no assignedId, no taskOrder)', async () => {
+        const { fixture, component, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          createTaskResult: of(makeCreatedTask())
+        });
+        fixture.detectChanges();
+
+        component.handleAddTaskSubmit('col-1', 'Wire up onboarding flow');
+
+        expect(tasksApi.createTask).toHaveBeenCalledTimes(1);
+        const [columnId, dto] = tasksApi.createTask.mock.calls[0];
+        expect(columnId).toBe('col-1');
+        expect(dto).toEqual({ title: 'Wire up onboarding flow' });
+      });
+
+      it('on 201 calls applyCreatedTask, closes the slot, and announces', async () => {
+        const created = makeCreatedTask({ title: 'Wire up onboarding flow' });
+        const { fixture, component, boardState } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1', name: 'To Do' })]),
+          createTaskResult: of(created)
+        });
+        fixture.detectChanges();
+
+        component.openAddTaskFlow('col-1');
+        component.handleAddTaskSubmit('col-1', 'Wire up onboarding flow');
+        fixture.detectChanges();
+
+        expect(boardState.applyCreatedTask).toHaveBeenCalledWith('p-1', created);
+        expect(component.draftFor('col-1')).toEqual({
+          open: false,
+          submitting: false,
+          error: null
+        });
+        expect(component.dragAnnouncement()).toBe(
+          "Task 'Wire up onboarding flow' added to To Do."
+        );
+      });
+
+      it('refocuses the registered trigger after a successful submit (tech spec D8)', async () => {
+        const created = makeCreatedTask({ title: 'A new task' });
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1', name: 'To Do' })]),
+          createTaskResult: of(created)
+        });
+        fixture.detectChanges();
+
+        // Spy on every button's focus() so we don't have to disambiguate
+        // between the real column trigger (registered via ViewChild) and
+        // any stand-in. The ViewChild emission is deferred via
+        // setTimeout(0) — wait for it before submitting so the trigger
+        // is already registered.
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const focusSpy = vi.spyOn(HTMLButtonElement.prototype, 'focus');
+
+        component.handleAddTaskSubmit('col-1', 'A new task');
+        // Flush the queueMicrotask focus helper.
+        await Promise.resolve();
+
+        expect(focusSpy).toHaveBeenCalled();
+        focusSpy.mockRestore();
+      });
+    });
+
+    describe('handleAddTaskSubmit — error branches', () => {
+      it('500 → slot becomes { open:true, submitting:false, error:<mapped> }, no applyCreatedTask, no focus move', async () => {
+        const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });
+        const { fixture, component, boardState } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          createTaskResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        component.handleAddTaskSubmit('col-1', 'Wire up onboarding flow');
+
+        expect(boardState.applyCreatedTask).not.toHaveBeenCalled();
+        expect(component.draftFor('col-1')).toEqual({
+          open: true,
+          submitting: false,
+          error: 'Something went wrong on our end. Please try again in a moment.'
+        });
+      });
+
+      it('404 uses the column-missing copy', async () => {
+        const err = new HttpErrorResponse({ status: 404, statusText: 'nope' });
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          createTaskResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        component.handleAddTaskSubmit('col-1', 'Oops');
+        expect(component.draftFor('col-1').error).toBe(
+          "We couldn't add this task — the column no longer exists."
+        );
+      });
+    });
+
+    describe('handleAddTaskSubmit — guards', () => {
+      it('short-circuits when submitting is already true (double-submit defence)', async () => {
+        const pending = new Subject<TaskResponseDto>();
+        const { fixture, component, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          createTaskResult: pending.asObservable()
+        });
+        fixture.detectChanges();
+
+        component.handleAddTaskSubmit('col-1', 'First');
+        expect(component.draftFor('col-1').submitting).toBe(true);
+        // Second call while still pending — must NOT issue a second POST.
+        component.handleAddTaskSubmit('col-1', 'Second');
+        expect(tasksApi.createTask).toHaveBeenCalledTimes(1);
+      });
+
+      it('short-circuits silently when currentProjectId is null', async () => {
+        const { fixture, component, boardState, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })])
+        });
+        fixture.detectChanges();
+        boardState.currentProjectId.set(null);
+        component.handleAddTaskSubmit('col-1', 'Nope');
+        expect(tasksApi.createTask).not.toHaveBeenCalled();
+      });
+
+      it('stale columnId (column no longer present) → 404-equivalent error, no POST', async () => {
+        const { fixture, component, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })])
+        });
+        fixture.detectChanges();
+
+        component.handleAddTaskSubmit('col-ghost', 'Orphan');
+        expect(tasksApi.createTask).not.toHaveBeenCalled();
+        expect(component.draftFor('col-ghost').error).toBe(
+          "We couldn't add this task — the column no longer exists."
+        );
+      });
+    });
+
+    describe('handleAddTaskCancel', () => {
+      it('closes the slot with no POST and restores focus to the trigger', async () => {
+        const { fixture, component, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })])
+        });
+        fixture.detectChanges();
+        // Wait for the deferred trigger registration.
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const focusSpy = vi.spyOn(HTMLButtonElement.prototype, 'focus');
+
+        component.openAddTaskFlow('col-1');
+        component.handleAddTaskCancel('col-1');
+
+        expect(component.draftFor('col-1')).toEqual({
+          open: false,
+          submitting: false,
+          error: null
+        });
+        expect(tasksApi.createTask).not.toHaveBeenCalled();
+
+        await Promise.resolve();
+        expect(focusSpy).toHaveBeenCalled();
+        focusSpy.mockRestore();
+      });
+    });
+
+    describe('SignalR echo dedupe on a just-HTTP-created task', () => {
+      it('does not double-insert when the client receives its own echo', async () => {
+        const created = makeCreatedTask({ id: 't-echo' });
+        const { fixture, component, boardState } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          createTaskResult: of(created)
+        });
+        fixture.detectChanges();
+
+        component.handleAddTaskSubmit('col-1', 'Wire up onboarding flow');
+        // Simulate the SignalR echo by invoking the mocked applyCreatedTask
+        // via its mock.calls implementation — the shared mock dedupes by id.
+        const applyCreatedTaskFn = boardState.applyCreatedTask as unknown as (
+          projectId: string,
+          dto: TaskResponseDto
+        ) => void;
+        applyCreatedTaskFn('p-1', created);
+
+        const bucket = boardState.tasksByColumnId()['col-1'] ?? [];
+        expect(bucket.filter(t => t.id === 't-echo').length).toBe(1);
+      });
+    });
+
+    describe('Unmount during in-flight task create', () => {
+      it('destroying the component mid-request does not throw (takeUntilDestroyed cancels)', async () => {
+        const pending = new Subject<TaskResponseDto>();
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          createTaskResult: pending.asObservable()
+        });
+        fixture.detectChanges();
+
+        component.handleAddTaskSubmit('col-1', 'In flight');
+        expect(component.draftFor('col-1').submitting).toBe(true);
+
+        fixture.destroy();
+
+        expect(() => {
+          pending.next(makeCreatedTask({ id: 't-late' }));
+          pending.complete();
+        }).not.toThrow();
+      });
+    });
+
+    describe('Concurrent open across multiple columns', () => {
+      it('submitting on column A does not close an open form on column B', async () => {
+        const { fixture, component } = await mount({
+          columnsApiResult: of([
+            makeColumnDto({ id: 'col-A', name: 'A' }),
+            makeColumnDto({ id: 'col-B', name: 'B' })
+          ]),
+          createTaskResult: of(makeCreatedTask({ columnId: 'col-A' }))
+        });
+        fixture.detectChanges();
+
+        component.openAddTaskFlow('col-A');
+        component.openAddTaskFlow('col-B');
+
+        component.handleAddTaskSubmit('col-A', 'Task for A');
+
+        // A closed; B remains open.
+        expect(component.draftFor('col-A').open).toBe(false);
+        expect(component.draftFor('col-B').open).toBe(true);
       });
     });
   });

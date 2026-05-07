@@ -147,3 +147,94 @@
 
 // ---- Reduced motion ----------------------------------------------------
 // Global rule handles it; no per-component override needed.
+
+// ---- Footer slot (issue #78) -------------------------------------------
+// Hosts either the "Add task" trigger or the inline <app-board-add-task>.
+// Sits below .board-column__list; the column's max-height cap keeps the
+// list scrollable while the footer stays anchored. Horizontal padding
+// matches the list's $space-lg so the trigger/form aligns with the
+// cards and the empty drop-zone.
+.board-column__footer {
+  flex: 0 0 auto;
+
+  display: flex;
+  flex-direction: column;
+
+  padding: $space-xs $space-lg $space-sm $space-lg;
+}
+
+// When the list is followed by the footer, shrink its bottom padding
+// so the two sections read as one continuous column bottom rather than
+// stacked sections with competing air.
+.board-column__list:has(+ .board-column__footer) {
+  padding-bottom: $space-xs;
+}
+
+// ---- "Add task" trigger ------------------------------------------------
+// Ghost / dashed treatment — one notch quieter than the board-level
+// trailing "+ Add column" button. No plus glyph (task-create is smaller
+// than column-create and the text label "Add task" alone is unambiguous
+// in a per-column context). Hover lifts to $brand-primary-light + solid
+// $border-dropzone, matching the vocabulary of CDK drop targets and the
+// #77 trailing affordance — the slot is "receptive" for new tasks.
+.board-column__add-task {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  min-height: 40px;
+  padding: $space-xs $space-sm;
+
+  background: transparent;
+  color: $text-secondary;
+  border: 1px dashed $border-light;
+  border-radius: $radius-md;
+
+  font-family: $font-family-base;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-tight;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    color            $motion-fast,
+    box-shadow       $motion-fast;
+
+  &:hover:not(:disabled) {
+    background: $brand-primary-light;
+    border-color: $border-dropzone;
+    border-style: solid;
+    color: $text-primary;
+    box-shadow: $shadow-card-hover;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  // Focus-visible: 2 px outline AND border promotion so keyboard users
+  // receive the same signal as mouse-hover users (never outline-alone).
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    border-color: $border-dropzone;
+    border-style: solid;
+    color: $text-primary;
+  }
+
+  &:disabled {
+    color: $text-tertiary;
+    border-color: $border-light;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  // Touch target — 44×44 on coarse pointers. 40 px baseline promoted.
+  @media (pointer: coarse) {
+    min-height: 44px;
+  }
+}

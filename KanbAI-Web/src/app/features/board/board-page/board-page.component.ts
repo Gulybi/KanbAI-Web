@@ -14,6 +14,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { HttpErrorResponse } from '@angular/common/http';
 
 import { BoardStateService } from '../state/board-state.service';
 import { BoardColumn, BoardTask } from '../state/board-state.model';
@@ -23,6 +24,7 @@ import {
 } from '../services/columns-api.service';
 import {
   TasksApiService,
+  mapTaskCreateErrorToUserMessage,
   mapTaskMoveErrorToUserMessage
 } from '../services/tasks-api.service';
 import { ColumnResponseDto, CreateColumnDto } from '../models/column.model';
@@ -34,6 +36,21 @@ import { AttachmentsStateService } from '../../attachments/state/attachments-sta
 
 /** Auto-dismiss duration (ms) for the inline move-error strip. */
 const MOVE_ERROR_AUTO_DISMISS_MS = 5000;
+
+/** Per-column transient UI state for the add-task flow (issue #78). */
+interface TaskDraftState {
+  open: boolean;
+  submitting: boolean;
+  error: string | null;
+}
+type TaskDraftMap = Record<string, TaskDraftState>;
+
+/** Default slice for columns the user has never opened. */
+const EMPTY_DRAFT: TaskDraftState = {
+  open: false,
+  submitting: false,
+  error: null
+};
 
 /**
  * Board page — smart container.
@@ -135,6 +152,15 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly existingColumnNames: Signal<readonly string[]> = computed(() =>
     this.columns().map(c => c.name)
   );
+
+  // ---------------- Issue #78 — add-task flow ----------------
+
+  /**
+   * Per-column add-task state map. Keyed by `columnId`; missing keys
+   * mean the column has never opened its form. Every mutation replaces
+   * the entire map reference so OnPush CD picks up the change.
+   */
+  readonly taskDrafts = signal<TaskDraftMap>({});
 
   /**
    * Trigger button inside the empty-state panel. Receives focus when the
@@ -345,6 +371,106 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   private focusTrailingAddButton(): void {
     this.trailingAddButton?.nativeElement.focus();
+  }
+
+  // ---------------- Issue #78 — add-task handlers ----------------
+
+  /** Per-column accessor used inline in the template — cheap, signal-backed. */
+  draftFor(columnId: string): TaskDraftState {
+    return this.taskDrafts()[columnId] ?? EMPTY_DRAFT;
+  }
+
+  /**
+   * Updates a single column's draft slot, replacing the map reference so
+   * the OnPush template picks up the change.
+   */
+  private setDraft(columnId: string, next: TaskDraftState): void {
+    this.taskDrafts.update(current => ({ ...current, [columnId]: next }));
+  }
+
+  /**
+   * User clicked the "Add task" trigger in a column. Open the form and
+   * clear any prior error so the fresh mount does not inherit stale copy.
+   */
+  openAddTaskFlow(columnId: string): void {
+    this.setDraft(columnId, { open: true, submitting: false, error: null });
+    // BoardAddTaskComponent's own `afterNextRender` focuses the native
+    // input — no explicit focus call needed here.
+  }
+
+  /**
+   * HTTP-success orchestrator for the add-task flow. Guards against
+   * double-submit, stale project context, and stale `columnId`
+   * (ColumnDeleted arriving between open and submit).
+   */
+  handleAddTaskSubmit(columnId: string, trimmedTitle: string): void {
+    const projectId = this.boardState.currentProjectId();
+    if (projectId === null) {
+      return;
+    }
+    if (this.draftFor(columnId).submitting) {
+      // Rapid double-submit defence (AC: one POST only).
+      return;
+    }
+    const columnStillPresent = this.columns().some(c => c.id === columnId);
+    if (!columnStillPresent) {
+      // Concurrency window: SignalR ColumnDeleted arrived before the user
+      // finished typing. Surface the same copy the 404 branch would show.
+      this.setDraft(columnId, {
+        open: true,
+        submitting: false,
+        error: mapTaskCreateErrorToUserMessage(
+          new HttpErrorResponse({ status: 404 })
+        )
+      });
+      return;
+    }
+
+    this.setDraft(columnId, { open: true, submitting: true, error: null });
+
+    this.tasksApi
+      .createTask(columnId, { title: trimmedTitle })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: created => {
+          this.boardState.applyCreatedTask(projectId, created);
+          this.setDraft(columnId, EMPTY_DRAFT);
+          const columnName =
+            this.columns().find(c => c.id === columnId)?.name ?? 'column';
+          this.announce(`Task '${created.title}' added to ${columnName}.`);
+          queueMicrotask(() => this.focusAddTaskTrigger(columnId));
+        },
+        error: err => {
+          this.setDraft(columnId, {
+            open: true,
+            submitting: false,
+            error: mapTaskCreateErrorToUserMessage(err)
+          });
+          // Stay open; typed value is preserved in the child FormControl.
+        }
+      });
+  }
+
+  /** Cancel handler — closes the slot and restores focus to the trigger. */
+  handleAddTaskCancel(columnId: string): void {
+    this.setDraft(columnId, EMPTY_DRAFT);
+    queueMicrotask(() => this.focusAddTaskTrigger(columnId));
+  }
+
+  /**
+   * Re-focuses the column's "Add task" trigger by looking it up via the
+   * stable DOM id rendered by `BoardColumnComponent.addTaskTriggerId`.
+   * Using a DOM lookup (rather than a ViewChild registration output)
+   * sidesteps the `ExpressionChangedAfterItHasBeenChecked` re-check that
+   * would otherwise fire when the parent handles a `ViewChild`-driven
+   * output during the verify pass.
+   */
+  private focusAddTaskTrigger(columnId: string): void {
+    const id = `add-task-trigger-${columnId}`;
+    const el = document.getElementById(id);
+    if (el instanceof HTMLButtonElement) {
+      el.focus();
+    }
   }
 
   private loadColumns(projectId: string): void {

@@ -846,6 +846,143 @@ describe('BoardStateService', () => {
     });
   });
 
+  describe('applyCreatedTask() (issue #78)', () => {
+    const COLUMN_ID = 'col-1';
+    const makeTaskDto = (partial?: Partial<TaskResponseDto>): TaskResponseDto => ({
+      id: 't-new',
+      title: 'Wire up onboarding flow',
+      content: null,
+      taskOrder: 2,
+      columnId: COLUMN_ID,
+      assignedId: null,
+      createdAt: '2026-05-04T00:00:00Z',
+      updatedAt: '2026-05-04T00:00:00Z',
+      ...partial
+    });
+
+    const seedProjectAndColumn = () => {
+      service.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: COLUMN_ID,
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+    };
+
+    it('is a no-op when projectId does not match currentProjectId', () => {
+      seedProjectAndColumn();
+      service.applyCreatedTask(OTHER_PROJECT_ID, makeTaskDto());
+      expect(service.tasksByColumnId()[COLUMN_ID] ?? []).toEqual([]);
+    });
+
+    it('is a no-op when the target column is not in state', () => {
+      seedProjectAndColumn();
+      service.applyCreatedTask(PROJECT_ID, makeTaskDto({ columnId: 'col-ghost' }));
+      expect(service.tasksByColumnId()['col-ghost']).toBeUndefined();
+    });
+
+    it('is a no-op when a task with the same id already exists in that bucket', () => {
+      seedProjectAndColumn();
+      // Seed an existing task via SignalR first.
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-existing',
+        title: 'existing',
+        content: null,
+        taskOrder: 1,
+        columnId: COLUMN_ID,
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()[COLUMN_ID].length).toBe(1);
+
+      service.applyCreatedTask(
+        PROJECT_ID,
+        makeTaskDto({ id: 't-existing', title: 'should-not-replace' })
+      );
+
+      // Still one entry, original title preserved.
+      const bucket = service.tasksByColumnId()[COLUMN_ID];
+      expect(bucket.length).toBe(1);
+      expect(bucket[0].title).toBe('existing');
+    });
+
+    it('appends a new task and preserves taskOrder ascending', () => {
+      seedProjectAndColumn();
+      // Seed two tasks at orders 0 and 3.
+      for (const order of [0, 3]) {
+        signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+          id: `t-${order}`,
+          title: `t${order}`,
+          content: null,
+          taskOrder: order,
+          columnId: COLUMN_ID,
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+      // Insert a task at order 2 — should land between them.
+      service.applyCreatedTask(PROJECT_ID, makeTaskDto({ id: 't-2', taskOrder: 2 }));
+      const bucket = service.tasksByColumnId()[COLUMN_ID];
+      expect(bucket.map(t => t.id)).toEqual(['t-0', 't-2', 't-3']);
+    });
+
+    it('drops createdAt / updatedAt from the projected BoardTask', () => {
+      seedProjectAndColumn();
+      service.applyCreatedTask(PROJECT_ID, makeTaskDto({ id: 't-proj' }));
+      const stored = service.tasksByColumnId()[COLUMN_ID][0];
+      expect(stored).toEqual({
+        id: 't-proj',
+        title: 'Wire up onboarding flow',
+        content: null,
+        taskOrder: 2,
+        columnId: COLUMN_ID,
+        assignedId: null
+      });
+      expect(stored as unknown as { createdAt?: string }).not.toHaveProperty('createdAt');
+      expect(stored as unknown as { updatedAt?: string }).not.toHaveProperty('updatedAt');
+    });
+
+    it('applyCreatedTask + subsequent TaskCreated echo with the same id does not double-insert', () => {
+      seedProjectAndColumn();
+      // Client-side HTTP-success path.
+      service.applyCreatedTask(
+        PROJECT_ID,
+        makeTaskDto({ id: 't-echo', title: 'Echo', taskOrder: 0 })
+      );
+      expect(service.tasksByColumnId()[COLUMN_ID].length).toBe(1);
+
+      // SignalR echo of the same id — shared helper dedupes by id.
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-echo',
+        title: 'Echo',
+        content: null,
+        taskOrder: 0,
+        columnId: COLUMN_ID,
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()[COLUMN_ID].length).toBe(1);
+    });
+
+    it('is a safe no-op on a null/undefined dto (defensive)', () => {
+      seedProjectAndColumn();
+      expect(() =>
+        service.applyCreatedTask(PROJECT_ID, null as unknown as TaskResponseDto)
+      ).not.toThrow();
+      expect(() =>
+        service.applyCreatedTask(PROJECT_ID, undefined as unknown as TaskResponseDto)
+      ).not.toThrow();
+      expect(service.tasksByColumnId()[COLUMN_ID] ?? []).toEqual([]);
+    });
+  });
+
   describe('applyOptimisticTaskMove() (issue #47)', () => {
     beforeEach(() => {
       service.enterBoard(PROJECT_ID);

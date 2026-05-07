@@ -38,4 +38,24 @@
       }
     }
   </div>
+  <footer class="board-column__footer">
+    @if (addTaskOpen()) {
+      <app-board-add-task
+        [submitting]="addTaskSubmitting()"
+        [submitError]="addTaskError()"
+        (submitted)="addTaskSubmitted.emit($event)"
+        (cancelled)="addTaskCancelled.emit()"
+      />
+    } @else {
+      <button
+        type="button"
+        class="board-column__add-task"
+        [id]="addTaskTriggerId()"
+        [attr.aria-label]="addTaskTriggerLabel()"
+        (click)="addTaskRequested.emit()"
+      >
+        Add task
+      </button>
+    }
+  </footer>
 </section>

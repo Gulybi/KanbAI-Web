@@ -88,8 +88,14 @@
           [rolledBackTaskId]="rolledBackTaskId()"
           [rolledBackTrigger]="rolledBackTrigger()"
           [activeTaskId]="selectedTask()?.id ?? null"
+          [addTaskOpen]="draftFor(column.id).open"
+          [addTaskSubmitting]="draftFor(column.id).submitting"
+          [addTaskError]="draftFor(column.id).error"
           (taskDropped)="handleTaskDropped(column.id, $event)"
           (taskOpened)="handleTaskOpened($event)"
+          (addTaskRequested)="openAddTaskFlow(column.id)"
+          (addTaskSubmitted)="handleAddTaskSubmit(column.id, $event)"
+          (addTaskCancelled)="handleAddTaskCancel(column.id)"
         />
       }
       <div class="board-page__trailing-slot">
