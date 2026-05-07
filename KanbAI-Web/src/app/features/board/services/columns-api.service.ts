@@ -4,18 +4,20 @@ import { Observable, map } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
 import {
+  ColumnCreateResponse,
   ColumnResponseDto,
-  ColumnsListResponse
+  ColumnsListResponse,
+  CreateColumnDto
 } from '../models/column.model';
 
 /**
  * Identifies which user-facing operation triggered an error, so
  * `mapColumnErrorToUserMessage` can produce operation-appropriate copy.
  *
- * Only `'list'` is supported in this ticket — create/delete column are
- * out of scope per the issue #47 context document.
+ * `'create'` was added by issue #70; `'list'` was the original operation
+ * shipped with #47.
  */
-export type ColumnOperation = 'list';
+export type ColumnOperation = 'list' | 'create';
 
 @Injectable({ providedIn: 'root' })
 export class ColumnsApiService {
@@ -47,6 +49,35 @@ export class ColumnsApiService {
       })
     );
   }
+
+  /**
+   * `POST /api/column/project/{projectId}` — creates a single column for
+   * a project. Returns the created `ColumnResponseDto`.
+   *
+   * Envelope unwrap mirrors `ProjectsApiService.createProject`:
+   *  - `success: false` or `data == null` → observable error.
+   *  - `success: true` with non-null data → unwrapped DTO.
+   *
+   * The service does NOT retry, does NOT swallow errors, and does NOT
+   * translate to user copy — callers (`ProjectCreationService`) own
+   * error translation and per-column sequencing semantics.
+   */
+  createColumn(
+    projectId: string,
+    dto: CreateColumnDto
+  ): Observable<ColumnResponseDto> {
+    const url = `${this.apiUrl}/project/${encodeURIComponent(projectId)}`;
+    return this.http.post<ColumnCreateResponse>(url, dto).pipe(
+      map(response => {
+        if (!response.success || response.data == null) {
+          throw new Error(
+            response.errors?.[0] ?? response.message ?? 'Request failed'
+          );
+        }
+        return response.data;
+      })
+    );
+  }
 }
 
 /**
@@ -54,18 +85,13 @@ export class ColumnsApiService {
  * envelope-unwrap) into a user-readable sentence. Never exposes status
  * codes, URLs, or stack traces to the UI.
  *
- * Operation is `'list'` only in this ticket; the signature keeps the
- * parameter for parity with sibling helpers so future column CRUD can
- * extend the table without changing call-sites.
+ * `operation` selects the appropriate wording. Both `'list'` (issue #47)
+ * and `'create'` (issue #70) are supported.
  */
 export function mapColumnErrorToUserMessage(
   error: unknown,
   operation: ColumnOperation
 ): string {
-  // Reference `operation` so TS doesn't flag it unused while we are
-  // still single-operation (future extensions will branch on this).
-  void operation;
-
   if (error instanceof HttpErrorResponse) {
     if (error.status === 0) {
       return "We couldn't reach the server. Please check your connection and try again.";
@@ -76,6 +102,9 @@ export function mapColumnErrorToUserMessage(
     }
 
     if (error.status === 404) {
+      if (operation === 'create') {
+        return "We couldn't add a column — this project no longer exists.";
+      }
       return 'This project no longer exists.';
     }
 
@@ -83,11 +112,20 @@ export function mapColumnErrorToUserMessage(
       return 'Something went wrong on our end. Please try again in a moment.';
     }
 
-    // Any other 4xx.
     if (error.status >= 400) {
-      return "We couldn't load this board. Please try again.";
+      return operationGenericCopy(operation);
     }
   }
 
-  return "We couldn't load this board. Please try again.";
+  return operationGenericCopy(operation);
+}
+
+function operationGenericCopy(operation: ColumnOperation): string {
+  switch (operation) {
+    case 'create':
+      return "We couldn't add a column. Please try again.";
+    case 'list':
+    default:
+      return "We couldn't load this board. Please try again.";
+  }
 }

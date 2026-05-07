@@ -3,7 +3,11 @@ import { By } from '@angular/platform-browser';
 import { WritableSignal, signal } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import { Router } from '@angular/router';
-import { vi } from 'vitest';
+import { Subject, of } from 'rxjs';
+import { describe, it, expect, vi } from 'vitest';
+
+import { PartialFailureToastComponent } from '../components/partial-failure-toast/partial-failure-toast.component';
+import { CreateProjectDialogResult } from '../components/create-project-dialog/create-project-dialog.types';
 
 import { DashboardPageComponent } from './dashboard-page.component';
 import { ProjectStateService } from '../state/project-state.service';
@@ -58,7 +62,10 @@ async function mount(): Promise<{
   };
 
   const dialog: DialogMock = {
-    open: vi.fn()
+    // Default: a dialog ref whose `closed` emits nothing. Tests that need
+    // to assert close-result behavior override `dialog.open.mockReturnValue`
+    // with a Subject they control.
+    open: vi.fn(() => ({ closed: of(undefined) }))
   };
 
   const router: RouterMock = {
@@ -345,5 +352,110 @@ describe('DashboardPageComponent', () => {
 
     expect(router.navigate).not.toHaveBeenCalled();
     expect(dialog.open).toHaveBeenCalledTimes(1);
+  });
+
+  // ------------------------------------------------------------------
+  // Partial-failure toast (issue #70)
+  // ------------------------------------------------------------------
+  it('renders the PartialFailureToast when the create dialog closes with "partial"', async () => {
+    const closed$ = new Subject<CreateProjectDialogResult | undefined>();
+    const { fixture, dialog } = await mount();
+    dialog.open.mockReturnValue({ closed: closed$.asObservable() });
+
+    const header = fixture.debugElement.query(By.directive(DashboardHeaderComponent));
+    (header.componentInstance as DashboardHeaderComponent).createClick.emit();
+    fixture.detectChanges();
+
+    closed$.next({
+      status: 'partial',
+      project: makeProjects(1)[0],
+      createdColumns: [],
+      failedNames: ['Done'],
+      message:
+        "The project was created, but 1 column couldn't be added: 'Done'. You can add it from the board."
+    });
+    closed$.complete();
+    fixture.detectChanges();
+
+    const toast = fixture.debugElement.query(By.directive(PartialFailureToastComponent));
+    expect(toast).toBeTruthy();
+  });
+
+  it('does NOT render the toast on a "success" close', async () => {
+    const closed$ = new Subject<CreateProjectDialogResult | undefined>();
+    const { fixture, dialog } = await mount();
+    dialog.open.mockReturnValue({ closed: closed$.asObservable() });
+
+    const header = fixture.debugElement.query(By.directive(DashboardHeaderComponent));
+    (header.componentInstance as DashboardHeaderComponent).createClick.emit();
+    fixture.detectChanges();
+
+    closed$.next({
+      status: 'success',
+      project: makeProjects(1)[0],
+      columns: []
+    });
+    closed$.complete();
+    fixture.detectChanges();
+
+    const toast = fixture.debugElement.query(By.directive(PartialFailureToastComponent));
+    expect(toast).toBeNull();
+  });
+
+  it('dismisses the toast when onPartialToastDismiss is invoked', async () => {
+    const closed$ = new Subject<CreateProjectDialogResult | undefined>();
+    const { fixture, dialog } = await mount();
+    dialog.open.mockReturnValue({ closed: closed$.asObservable() });
+
+    const header = fixture.debugElement.query(By.directive(DashboardHeaderComponent));
+    (header.componentInstance as DashboardHeaderComponent).createClick.emit();
+    fixture.detectChanges();
+
+    closed$.next({
+      status: 'partial',
+      project: makeProjects(1)[0],
+      createdColumns: [],
+      failedNames: ['Done'],
+      message: 'partial'
+    });
+    closed$.complete();
+    fixture.detectChanges();
+
+    const toast = fixture.debugElement.query(By.directive(PartialFailureToastComponent));
+    expect(toast).toBeTruthy();
+    (toast.componentInstance as PartialFailureToastComponent).dismiss.emit();
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.directive(PartialFailureToastComponent))).toBeNull();
+  });
+
+  it('routes to the new project board when the toast emits openBoard', async () => {
+    const closed$ = new Subject<CreateProjectDialogResult | undefined>();
+    const { fixture, dialog, router } = await mount();
+    dialog.open.mockReturnValue({ closed: closed$.asObservable() });
+
+    const header = fixture.debugElement.query(By.directive(DashboardHeaderComponent));
+    (header.componentInstance as DashboardHeaderComponent).createClick.emit();
+    fixture.detectChanges();
+
+    const project = makeProjects(1)[0];
+    closed$.next({
+      status: 'partial',
+      project,
+      createdColumns: [],
+      failedNames: ['Done'],
+      message: 'partial'
+    });
+    closed$.complete();
+    fixture.detectChanges();
+
+    // Router navigate was NOT called yet — opening the dialog doesn't route.
+    expect(router.navigate).not.toHaveBeenCalled();
+
+    const toast = fixture.debugElement.query(By.directive(PartialFailureToastComponent));
+    (toast.componentInstance as PartialFailureToastComponent).openBoard.emit();
+    fixture.detectChanges();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/board', project.id]);
   });
 });

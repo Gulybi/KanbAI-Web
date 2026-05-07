@@ -23,6 +23,11 @@
     [control]="descriptionControl"
   ></app-form-input>
 
+  <app-column-draft-list
+    [formArray]="columnsArray"
+    [disabled]="submitting()"
+  ></app-column-draft-list>
+
   @if (errorMessage()) {
     <div
       class="create-project-dialog__error-banner"
@@ -56,6 +61,7 @@
     <button
       type="button"
       class="create-project-dialog__cancel"
+      [disabled]="submitting()"
       (click)="onCancel()"
     >
       Cancel
@@ -64,18 +70,44 @@
     <app-form-button
       type="submit"
       class="create-project-dialog__submit"
-      [disabled]="form.invalid || submitting()"
+      [disabled]="!canSubmit()"
     >
       @if (submitting()) {
-        <span aria-hidden="true">Creating…</span>
+        <span aria-hidden="true">
+          @if (creationPhase() === 'columns') {
+            Adding columns…
+          } @else {
+            Creating project…
+          }
+        </span>
         <span
           class="create-project-dialog__submit-spinner"
           aria-hidden="true"
         ></span>
-        <span class="sr-only">Creating project, please wait.</span>
+        <span class="sr-only">
+          @if (creationPhase() === 'columns') {
+            Adding columns, please wait.
+          } @else {
+            Creating project, please wait.
+          }
+        </span>
       } @else {
         Create project
       }
     </app-form-button>
+  </div>
+
+  <div
+    class="create-project-dialog__phase-live sr-only"
+    aria-live="polite"
+    aria-atomic="true"
+  >
+    @if (submitting()) {
+      @if (creationPhase() === 'columns') {
+        Adding columns…
+      } @else {
+        Creating project…
+      }
+    }
   </div>
 </form>

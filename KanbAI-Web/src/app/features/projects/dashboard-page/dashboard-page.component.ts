@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import { Router } from '@angular/router';
 
@@ -14,9 +14,20 @@ import {
   MembersDialogData,
   MembersDialogResult
 } from '../components/members-dialog/members-dialog.types';
+import { PartialFailureToastComponent } from '../components/partial-failure-toast/partial-failure-toast.component';
 import { ProjectStateService } from '../state/project-state.service';
 import { DashboardViewModel } from '../models/dashboard-view-model';
 import { ProjectSummary } from '../models/project.model';
+
+/**
+ * State of the dashboard's partial-failure toast. Non-null while the
+ * toast is visible; the template renders an `<app-partial-failure-toast>`
+ * from it.
+ */
+interface PartialFailureToastState {
+  project: ProjectSummary;
+  message: string;
+}
 
 @Component({
   selector: 'app-dashboard-page',
@@ -26,7 +37,8 @@ import { ProjectSummary } from '../models/project.model';
     DashboardSkeletonComponent,
     DashboardEmptyStateComponent,
     DashboardErrorStateComponent,
-    ProjectGridComponent
+    ProjectGridComponent,
+    PartialFailureToastComponent
   ],
   templateUrl: './dashboard-page.component.html',
   styleUrl: './dashboard-page.component.scss',
@@ -36,6 +48,9 @@ export class DashboardPageComponent implements OnInit {
   private readonly projectState = inject(ProjectStateService);
   private readonly dialog = inject(Dialog);
   private readonly router = inject(Router);
+
+  /** Non-null while the toast is visible. */
+  protected readonly partialFailureToast = signal<PartialFailureToastState | null>(null);
 
   /**
    * Discriminated-union view model collapsed from the four state-service
@@ -81,13 +96,24 @@ export class DashboardPageComponent implements OnInit {
   }
 
   protected openCreateDialog(): void {
-    this.dialog.open<CreateProjectDialogResult>(CreateProjectDialogComponent, {
+    const ref = this.dialog.open<CreateProjectDialogResult>(CreateProjectDialogComponent, {
       ariaLabelledBy: 'create-project-heading',
       autoFocus: 'first-tabbable',
       restoreFocus: true,
       disableClose: false,
       panelClass: 'create-project-dialog-panel',
       backdropClass: 'create-project-dialog-backdrop'
+    });
+
+    // Subscribe to the dialog's close result. `'partial'` surfaces the
+    // dashboard-scoped `PartialFailureToastComponent`.
+    ref.closed.subscribe(result => {
+      if (result && result.status === 'partial') {
+        this.partialFailureToast.set({
+          project: result.project,
+          message: result.message
+        });
+      }
     });
   }
 
@@ -108,5 +134,18 @@ export class DashboardPageComponent implements OnInit {
         backdropClass: 'members-dialog-backdrop'
       }
     );
+  }
+
+  protected onPartialToastOpenBoard(): void {
+    const toast = this.partialFailureToast();
+    if (!toast) {
+      return;
+    }
+    this.partialFailureToast.set(null);
+    this.router.navigate(['/board', toast.project.id]);
+  }
+
+  protected onPartialToastDismiss(): void {
+    this.partialFailureToast.set(null);
   }
 }

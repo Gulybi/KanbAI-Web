@@ -1,0 +1,134 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  position: fixed;
+  right: $space-md;
+  bottom: $space-md;
+  z-index: 1000;
+
+  max-width: 420px;
+  width: calc(100vw - #{$space-md * 2});
+
+  @include respond-to('md') {
+    right: $space-lg;
+    bottom: $space-lg;
+    width: auto;
+    min-width: 320px;
+  }
+}
+
+.partial-failure-toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  column-gap: $space-sm;
+  align-items: start;
+
+  padding: $space-sm $space-md;
+
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-high;
+  border-radius: $radius-md;
+  box-shadow: $shadow-dropdown;
+
+  font-family: $font-family-base;
+  color: $text-primary;
+
+  animation: partial-failure-toast-enter $motion-slow both;
+}
+
+.partial-failure-toast__icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: $status-high;
+  margin-top: 2px;
+}
+
+.partial-failure-toast__body {
+  font-size: $font-size-md;
+  line-height: $line-height-normal;
+  min-width: 0;
+}
+
+.partial-failure-toast__title {
+  margin: 0 0 $space-xxs 0;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $text-primary;
+}
+
+.partial-failure-toast__message {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $text-secondary;
+}
+
+.partial-failure-toast__actions {
+  display: flex;
+  gap: $space-xs;
+  margin-top: $space-xs;
+}
+
+.partial-failure-toast__open-board {
+  appearance: none;
+  background: transparent;
+  color: $text-brand;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+
+  font-family: inherit;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  text-decoration: underline;
+
+  transition: color $motion-fast;
+
+  &:hover  { color: $brand-primary-hover; }
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    border-radius: $radius-sm;
+  }
+}
+
+.partial-failure-toast__dismiss {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 28px;
+  height: 28px;
+
+  background: transparent;
+  color: $text-tertiary;
+  border: none;
+  border-radius: $radius-circle;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    color            $motion-fast;
+
+  svg { width: 14px; height: 14px; }
+
+  &:hover  { background: $bg-sidebar-light; color: $text-primary; }
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+}
+
+@keyframes partial-failure-toast-enter {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
