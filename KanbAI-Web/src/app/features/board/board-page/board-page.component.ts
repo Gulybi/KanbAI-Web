@@ -2,9 +2,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   OnDestroy,
   OnInit,
   Signal,
+  ViewChild,
   computed,
   inject,
   signal
@@ -23,8 +25,9 @@ import {
   TasksApiService,
   mapTaskMoveErrorToUserMessage
 } from '../services/tasks-api.service';
-import { ColumnResponseDto } from '../models/column.model';
+import { ColumnResponseDto, CreateColumnDto } from '../models/column.model';
 import { BoardColumnComponent } from '../components/board-column/board-column.component';
+import { BoardAddColumnComponent } from '../components/board-add-column/board-add-column.component';
 import { TaskDetailPanelComponent } from '../components/task-detail-panel/task-detail-panel.component';
 import type { DropzoneFileSelectedEvent } from '../../attachments/models/dropzone.model';
 import { AttachmentsStateService } from '../../attachments/state/attachments-state.service';
@@ -42,7 +45,12 @@ const MOVE_ERROR_AUTO_DISMISS_MS = 5000;
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [DragDropModule, BoardColumnComponent, TaskDetailPanelComponent],
+  imports: [
+    DragDropModule,
+    BoardColumnComponent,
+    BoardAddColumnComponent,
+    TaskDetailPanelComponent
+  ],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -98,6 +106,49 @@ export class BoardPageComponent implements OnInit, OnDestroy {
    * drawer is closed. Set by `handleTaskOpened`, cleared by `handleTaskDetailClosed`.
    */
   readonly selectedTask = signal<BoardTask | null>(null);
+
+  // ---------------- Issue #77 — add-column flow ----------------
+
+  /**
+   * `'closed'` shows the trigger affordance (empty-state button or
+   * trailing "+ Add column"); `'open'` renders the
+   * `BoardAddColumnComponent` inline in the originating slot.
+   */
+  readonly addColumnMode = signal<'closed' | 'open'>('closed');
+
+  /** True while an HTTP create is in flight. Blocks re-submit. */
+  readonly createColumnSubmitting = signal<boolean>(false);
+
+  /**
+   * Inline server-side error copy for the add-column surface. `null` when
+   * no error is pending. Populated via `mapColumnErrorToUserMessage` on
+   * HTTP failure; cleared on every reopen / successful submit.
+   */
+  readonly createColumnError = signal<string | null>(null);
+
+  /**
+   * Derived list of current column names. Passed into
+   * `BoardAddColumnComponent` to drive the duplicate validator. Computed
+   * rather than plain `.map` so the validator-side effect only re-fires
+   * when the names actually change.
+   */
+  readonly existingColumnNames: Signal<readonly string[]> = computed(() =>
+    this.columns().map(c => c.name)
+  );
+
+  /**
+   * Trigger button inside the empty-state panel. Receives focus when the
+   * user cancels from the empty-board flow.
+   */
+  @ViewChild('emptyStateAddButton', { read: ElementRef })
+  private emptyStateAddButton?: ElementRef<HTMLButtonElement>;
+
+  /**
+   * Trailing "+ Add column" trigger button on populated boards. Receives
+   * focus after a cancel OR a successful submit.
+   */
+  @ViewChild('trailingAddButton', { read: ElementRef })
+  private trailingAddButton?: ElementRef<HTMLButtonElement>;
 
   /** Pending auto-dismiss timer for `moveError`. */
   private moveErrorTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -212,6 +263,88 @@ export class BoardPageComponent implements OnInit, OnDestroy {
    */
   handleAttachmentSelected(event: DropzoneFileSelectedEvent): void {
     this.attachmentsState.startUpload(event);
+  }
+
+  // ---------------- Issue #77 — add-column handlers ----------------
+
+  /**
+   * Opens the inline column-create flow. Called by both the empty-state
+   * CTA and the trailing "+ Add column" button. Clearing
+   * `createColumnError` BEFORE the `@if` flips open guarantees the fresh
+   * child mount does not inherit the previous attempt's server error.
+   */
+  openAddColumnFlow(): void {
+    this.createColumnError.set(null);
+    this.addColumnMode.set('open');
+    // BoardAddColumnComponent's own `afterNextRender` places focus on the
+    // native input — no explicit focus call needed here.
+  }
+
+  /**
+   * HTTP-success orchestrator for the add-column flow. Emits from the
+   * child's `submitted` output with the already-trimmed / already-validated
+   * column name. Guards against double-submit + stale project context.
+   */
+  handleAddColumnSubmit(trimmedName: string): void {
+    const projectId = this.boardState.currentProjectId();
+    if (projectId === null || this.createColumnSubmitting()) {
+      return;
+    }
+    const currentColumns = this.columns();
+    const nextOrder =
+      currentColumns.length === 0
+        ? 0
+        : Math.max(...currentColumns.map(c => c.columnOrder)) + 1;
+    const dto: CreateColumnDto = { name: trimmedName, columnOrder: nextOrder };
+
+    this.createColumnSubmitting.set(true);
+    this.createColumnError.set(null);
+
+    this.columnsApi
+      .createColumn(projectId, dto)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: created => {
+          this.boardState.applyCreatedColumn(projectId, created);
+          this.createColumnSubmitting.set(false);
+          this.addColumnMode.set('closed');
+          this.announce(`Column '${created.name}' added.`);
+          queueMicrotask(() => this.focusTrailingAddButton());
+        },
+        error: err => {
+          this.createColumnSubmitting.set(false);
+          this.createColumnError.set(mapColumnErrorToUserMessage(err, 'create'));
+          // Stay open; the child component preserves the typed value.
+        }
+      });
+  }
+
+  /**
+   * Cancel handler for both entry surfaces. Closes the form, clears any
+   * server error, and restores focus to the originating trigger button.
+   * The originating surface is inferred from the current column count
+   * (cancel from the empty-state panel fires while `columns().length === 0`;
+   * cancel from the trailing slot fires while `columns().length > 0`).
+   */
+  handleAddColumnCancel(): void {
+    const wasEmpty = this.columns().length === 0;
+    this.addColumnMode.set('closed');
+    this.createColumnError.set(null);
+    queueMicrotask(() => {
+      if (wasEmpty) {
+        this.focusEmptyStateAddButton();
+      } else {
+        this.focusTrailingAddButton();
+      }
+    });
+  }
+
+  private focusEmptyStateAddButton(): void {
+    this.emptyStateAddButton?.nativeElement.focus();
+  }
+
+  private focusTrailingAddButton(): void {
+    this.trailingAddButton?.nativeElement.focus();
   }
 
   private loadColumns(projectId: string): void {

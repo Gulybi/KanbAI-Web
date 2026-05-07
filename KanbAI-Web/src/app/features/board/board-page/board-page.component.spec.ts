@@ -30,10 +30,12 @@ interface BoardStateMock {
   applyOptimisticTaskMove: ReturnType<typeof vi.fn>;
   rollbackOptimisticTaskMove: ReturnType<typeof vi.fn>;
   reconcileServerTaskMove: ReturnType<typeof vi.fn>;
+  applyCreatedColumn: ReturnType<typeof vi.fn>;
 }
 
 interface ColumnsApiMock {
   getColumnsForProject: ReturnType<typeof vi.fn>;
+  createColumn: ReturnType<typeof vi.fn>;
 }
 
 interface TasksApiMock {
@@ -98,13 +100,50 @@ function createMockBoardState(): BoardStateMock {
       })
     ),
     rollbackOptimisticTaskMove: vi.fn(),
-    reconcileServerTaskMove: vi.fn()
+    reconcileServerTaskMove: vi.fn(),
+    applyCreatedColumn: vi.fn(
+      (projectId: string, dto: ColumnResponseDto): void => {
+        if (currentProjectId() !== projectId) {
+          return;
+        }
+        const existing = columns();
+        if (existing.some(c => c.id === dto.id)) {
+          return;
+        }
+        const next = [
+          ...existing,
+          {
+            id: dto.id,
+            name: dto.name,
+            colorCode: dto.colorCode,
+            columnOrder: dto.columnOrder,
+            projectId: dto.projectId
+          }
+        ].sort((a, b) => a.columnOrder - b.columnOrder);
+        columns.set(next);
+      }
+    )
   };
 }
 
-function createMockColumnsApi(result: Observable<ColumnResponseDto[]>): ColumnsApiMock {
+function createMockColumnsApi(
+  result: Observable<ColumnResponseDto[]>,
+  createResult?: Observable<ColumnResponseDto>
+): ColumnsApiMock {
   return {
-    getColumnsForProject: vi.fn().mockReturnValue(result)
+    getColumnsForProject: vi.fn().mockReturnValue(result),
+    createColumn: vi.fn().mockReturnValue(
+      createResult ??
+        of({
+          id: 'col-new',
+          name: 'Blocked',
+          colorCode: null,
+          columnOrder: 3,
+          projectId: 'p-1',
+          createdAt: '2026-05-04T00:00:00Z',
+          updatedAt: '2026-05-04T00:00:00Z'
+        } as ColumnResponseDto)
+    )
   };
 }
 
@@ -124,6 +163,7 @@ function createFakeActivatedRoute(projectId: string | null): ActivatedRoute {
 interface MountOptions {
   projectId?: string | null;
   columnsApiResult?: Observable<ColumnResponseDto[]>;
+  createColumnResult?: Observable<ColumnResponseDto>;
   tasksApiResult?: Observable<TaskResponseDto>;
 }
 
@@ -137,7 +177,10 @@ async function mount(options: MountOptions = {}): Promise<{
 }> {
   TestBed.resetTestingModule();
   const boardState = createMockBoardState();
-  const columnsApi = createMockColumnsApi(options.columnsApiResult ?? of([]));
+  const columnsApi = createMockColumnsApi(
+    options.columnsApiResult ?? of([]),
+    options.createColumnResult
+  );
   const tasksApi = createMockTasksApi(
     options.tasksApiResult ??
       of({
@@ -265,8 +308,12 @@ describe('BoardPageComponent', () => {
       ]);
     });
 
-    it('renders the cdkDropListGroup container when no columnLoadError is set', async () => {
-      const { fixture } = await mount({ columnsApiResult: of([]) });
+    it('renders the cdkDropListGroup container when columns load with ≥1 column and no error', async () => {
+      // Post-#77: the populated branch only renders once there is at least
+      // one column. Zero-column loads fall into the empty-state branch.
+      const { fixture } = await mount({
+        columnsApiResult: of([makeColumnDto({ id: 'c-1' })])
+      });
       fixture.detectChanges();
       const container = fixture.debugElement.query(By.css('.board-page__columns'));
       expect(container).toBeTruthy();
@@ -592,6 +639,467 @@ describe('BoardPageComponent', () => {
 
       component.dismissMoveError();
       expect(component.moveError()).toBeNull();
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #77 — Add-column from board view
+  // ----------------------------------------------------------------------
+
+  describe('Add-column flow (issue #77)', () => {
+    describe('Empty-state rendering', () => {
+      it('renders the empty-state panel when columns are empty AND no load error', async () => {
+        const { fixture } = await mount({ columnsApiResult: of([]) });
+        fixture.detectChanges();
+
+        const emptyPanel = fixture.debugElement.query(
+          By.css('.board-page__empty-panel')
+        );
+        expect(emptyPanel).toBeTruthy();
+        expect(emptyPanel.nativeElement.getAttribute('role')).toBe('region');
+        expect(emptyPanel.nativeElement.getAttribute('aria-label')).toBe(
+          'Empty board'
+        );
+        const heading = emptyPanel.query(By.css('.board-page__empty-heading'));
+        expect(heading.nativeElement.textContent).toContain(
+          'This board has no columns yet'
+        );
+        const button = fixture.debugElement.query(
+          By.css('.board-page__empty-add')
+        );
+        expect(button).toBeTruthy();
+
+        // Neither populated-board container nor trailing affordance should render.
+        expect(
+          fixture.debugElement.query(By.css('.board-page__columns'))
+        ).toBeNull();
+        expect(
+          fixture.debugElement.query(By.css('.board-page__trailing-add'))
+        ).toBeNull();
+      });
+
+      it('does NOT render the empty-state panel when columnLoadError is set', async () => {
+        const err = new HttpErrorResponse({ status: 404, statusText: 'nope' });
+        const { fixture } = await mount({ columnsApiResult: throwError(() => err) });
+        fixture.detectChanges();
+
+        expect(
+          fixture.debugElement.query(By.css('.board-page__load-error-panel'))
+        ).toBeTruthy();
+        expect(fixture.debugElement.query(By.css('.board-page__empty-panel'))).toBeNull();
+      });
+
+      it('does NOT render the trailing affordance when columns are empty', async () => {
+        const { fixture } = await mount({ columnsApiResult: of([]) });
+        fixture.detectChanges();
+        expect(
+          fixture.debugElement.query(By.css('.board-page__trailing-add'))
+        ).toBeNull();
+      });
+    });
+
+    describe('Trailing affordance rendering', () => {
+      it('renders the trailing "+ Add column" button after the last column when ≥1 column', async () => {
+        const { fixture } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1', name: 'To Do' })])
+        });
+        fixture.detectChanges();
+
+        const container = fixture.debugElement.query(By.css('.board-page__columns'));
+        expect(container).toBeTruthy();
+        const trailing = fixture.debugElement.query(
+          By.css('.board-page__trailing-add')
+        );
+        expect(trailing).toBeTruthy();
+        expect(trailing.nativeElement.getAttribute('aria-label')).toBe('Add column');
+        // Empty-state panel must NOT render.
+        expect(fixture.debugElement.query(By.css('.board-page__empty-panel'))).toBeNull();
+      });
+    });
+
+    describe('Open / cancel lifecycle', () => {
+      it('clicking the empty-state "Add column" button renders BoardAddColumnComponent inline', async () => {
+        const { fixture, component } = await mount({ columnsApiResult: of([]) });
+        fixture.detectChanges();
+
+        expect(component.addColumnMode()).toBe('closed');
+        component.openAddColumnFlow();
+        fixture.detectChanges();
+
+        expect(component.addColumnMode()).toBe('open');
+        // Form renders inside the empty-state panel.
+        const emptyPanel = fixture.debugElement.query(
+          By.css('.board-page__empty-panel')
+        );
+        const form = emptyPanel.query(By.css('app-board-add-column'));
+        expect(form).toBeTruthy();
+      });
+
+      it('clicking the trailing "+ Add column" button renders BoardAddColumnComponent inline', async () => {
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })])
+        });
+        fixture.detectChanges();
+
+        component.openAddColumnFlow();
+        fixture.detectChanges();
+
+        const slot = fixture.debugElement.query(
+          By.css('.board-page__trailing-slot')
+        );
+        const form = slot.query(By.css('app-board-add-column'));
+        expect(form).toBeTruthy();
+      });
+
+      it('handleAddColumnCancel closes the flow and clears any pending server error', async () => {
+        const { fixture, component } = await mount({ columnsApiResult: of([]) });
+        fixture.detectChanges();
+        component.openAddColumnFlow();
+        component['createColumnError'].set('prior error');
+
+        component.handleAddColumnCancel();
+        expect(component.addColumnMode()).toBe('closed');
+        expect(component.createColumnError()).toBeNull();
+      });
+    });
+
+    describe('Focus management (AC: focus moves to predictable destination)', () => {
+      it('cancel from empty-state returns focus to the empty-state "Add column" button', async () => {
+        const { fixture, component } = await mount({ columnsApiResult: of([]) });
+        fixture.detectChanges();
+
+        component.openAddColumnFlow();
+        fixture.detectChanges();
+
+        component.handleAddColumnCancel();
+        fixture.detectChanges();
+
+        // The cancel path uses queueMicrotask — flush the microtask queue.
+        await Promise.resolve();
+
+        const emptyBtn = fixture.debugElement.query(
+          By.css('.board-page__empty-add')
+        );
+        expect(emptyBtn).toBeTruthy();
+        expect(document.activeElement).toBe(emptyBtn.nativeElement);
+      });
+
+      it('cancel from trailing slot returns focus to the trailing "+ Add column" button', async () => {
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })])
+        });
+        fixture.detectChanges();
+
+        component.openAddColumnFlow();
+        fixture.detectChanges();
+
+        component.handleAddColumnCancel();
+        fixture.detectChanges();
+
+        // queueMicrotask → flush.
+        await Promise.resolve();
+
+        const trailingBtn = fixture.debugElement.query(
+          By.css('.board-page__trailing-add')
+        );
+        expect(trailingBtn).toBeTruthy();
+        expect(document.activeElement).toBe(trailingBtn.nativeElement);
+      });
+
+      it('successful submit on populated board moves focus to the trailing "+ Add column" button', async () => {
+        const created: ColumnResponseDto = {
+          id: 'col-new',
+          name: 'Blocked',
+          colorCode: null,
+          columnOrder: 1,
+          projectId: 'p-1',
+          createdAt: '',
+          updatedAt: ''
+        };
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1', columnOrder: 0 })]),
+          createColumnResult: of(created)
+        });
+        fixture.detectChanges();
+
+        component.openAddColumnFlow();
+        fixture.detectChanges();
+
+        component.handleAddColumnSubmit('Blocked');
+        fixture.detectChanges();
+
+        // Success path uses queueMicrotask(() => focusTrailingAddButton()) —
+        // flush the microtask queue.
+        await Promise.resolve();
+
+        const trailingBtn = fixture.debugElement.query(
+          By.css('.board-page__trailing-add')
+        );
+        expect(trailingBtn).toBeTruthy();
+        expect(document.activeElement).toBe(trailingBtn.nativeElement);
+      });
+    });
+
+    describe('Submit success', () => {
+      it('empty-board submit calls createColumn with columnOrder: 0', async () => {
+        const created: ColumnResponseDto = {
+          id: 'col-new',
+          name: 'To Do',
+          colorCode: null,
+          columnOrder: 0,
+          projectId: 'p-1',
+          createdAt: '',
+          updatedAt: ''
+        };
+        const { fixture, component, columnsApi } = await mount({
+          columnsApiResult: of([]),
+          createColumnResult: of(created)
+        });
+        fixture.detectChanges();
+
+        component.openAddColumnFlow();
+        component.handleAddColumnSubmit('To Do');
+
+        expect(columnsApi.createColumn).toHaveBeenCalledTimes(1);
+        const [, dto] = columnsApi.createColumn.mock.calls[0];
+        expect(dto).toEqual({ name: 'To Do', columnOrder: 0 });
+      });
+
+      it('populated-board submit calls createColumn with columnOrder: max+1', async () => {
+        const seeded = [
+          makeColumnDto({ id: 'c-a', columnOrder: 0 }),
+          makeColumnDto({ id: 'c-b', columnOrder: 3 })
+        ];
+        const { fixture, component, columnsApi } = await mount({
+          columnsApiResult: of(seeded)
+        });
+        fixture.detectChanges();
+
+        component.handleAddColumnSubmit('Blocked');
+
+        const [, dto] = columnsApi.createColumn.mock.calls[0];
+        expect(dto).toEqual({ name: 'Blocked', columnOrder: 4 });
+      });
+
+      it('on success, calls applyCreatedColumn, closes the flow, and announces', async () => {
+        const created: ColumnResponseDto = {
+          id: 'col-new',
+          name: 'Blocked',
+          colorCode: null,
+          columnOrder: 1,
+          projectId: 'p-1',
+          createdAt: '',
+          updatedAt: ''
+        };
+        const { fixture, component, boardState } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1', columnOrder: 0 })]),
+          createColumnResult: of(created)
+        });
+        fixture.detectChanges();
+
+        component.handleAddColumnSubmit('Blocked');
+
+        expect(boardState.applyCreatedColumn).toHaveBeenCalledWith('p-1', created);
+        expect(component.addColumnMode()).toBe('closed');
+        expect(component.createColumnSubmitting()).toBe(false);
+        expect(component.dragAnnouncement()).toBe("Column 'Blocked' added.");
+      });
+    });
+
+    describe('Submit error', () => {
+      it('populates createColumnError via mapColumnErrorToUserMessage and keeps the flow open', async () => {
+        const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })]),
+          createColumnResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        component.openAddColumnFlow();
+        component.handleAddColumnSubmit('Blocked');
+
+        expect(component.createColumnSubmitting()).toBe(false);
+        expect(component.createColumnError()).toBe(
+          'Something went wrong on our end. Please try again in a moment.'
+        );
+        expect(component.addColumnMode()).toBe('open');
+      });
+
+      it('404 error uses the create-specific copy', async () => {
+        const err = new HttpErrorResponse({ status: 404, statusText: 'nope' });
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })]),
+          createColumnResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+        component.handleAddColumnSubmit('Blocked');
+        expect(component.createColumnError()).toContain('project no longer exists');
+      });
+    });
+
+    describe('Double-submit defence', () => {
+      it('short-circuits when createColumnSubmitting is already true', async () => {
+        // Use a Subject so we can hold the request open.
+        const pending = new Subject<ColumnResponseDto>();
+        const { fixture, component, columnsApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })]),
+          createColumnResult: pending.asObservable()
+        });
+        fixture.detectChanges();
+
+        component.handleAddColumnSubmit('Blocked');
+        expect(component.createColumnSubmitting()).toBe(true);
+
+        // Second call — must NOT issue a second POST.
+        component.handleAddColumnSubmit('Blocked');
+
+        expect(columnsApi.createColumn).toHaveBeenCalledTimes(1);
+      });
+
+      it('short-circuits when currentProjectId is null', async () => {
+        const { fixture, component, boardState, columnsApi } = await mount();
+        fixture.detectChanges();
+        boardState.currentProjectId.set(null);
+        component.handleAddColumnSubmit('Blocked');
+        expect(columnsApi.createColumn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Form remount on reopen', () => {
+      it('@if-gated remount means a cancel-then-reopen shows the form afresh', async () => {
+        const { fixture, component } = await mount({ columnsApiResult: of([]) });
+        fixture.detectChanges();
+
+        component.openAddColumnFlow();
+        fixture.detectChanges();
+        const formBefore = fixture.debugElement.query(By.css('app-board-add-column'));
+        expect(formBefore).toBeTruthy();
+
+        component.handleAddColumnCancel();
+        fixture.detectChanges();
+        const formGone = fixture.debugElement.query(By.css('app-board-add-column'));
+        expect(formGone).toBeNull();
+
+        component.openAddColumnFlow();
+        fixture.detectChanges();
+        const formAfter = fixture.debugElement.query(By.css('app-board-add-column'));
+        // Fresh instance — the old nativeElement must not be reused.
+        expect(formAfter).toBeTruthy();
+        expect(formAfter.nativeElement).not.toBe(formBefore.nativeElement);
+      });
+
+      it('createColumnError is cleared on reopen so the fresh child does not inherit stale copy', async () => {
+        const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })]),
+          createColumnResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        component.handleAddColumnSubmit('Blocked');
+        expect(component.createColumnError()).not.toBeNull();
+
+        component.handleAddColumnCancel();
+        component.openAddColumnFlow();
+        expect(component.createColumnError()).toBeNull();
+      });
+    });
+
+    describe('existingColumnNames computed', () => {
+      it('projects columns().map(c => c.name)', async () => {
+        const { fixture, component, boardState } = await mount();
+        fixture.detectChanges();
+        boardState.columns.set([
+          {
+            id: 'c-1',
+            name: 'To Do',
+            colorCode: null,
+            columnOrder: 0,
+            projectId: 'p-1'
+          },
+          {
+            id: 'c-2',
+            name: 'In Progress',
+            colorCode: null,
+            columnOrder: 1,
+            projectId: 'p-1'
+          }
+        ]);
+        expect(component.existingColumnNames()).toEqual(['To Do', 'In Progress']);
+      });
+    });
+
+    describe('Empty-to-populated / populated-to-empty transitions', () => {
+      it('0 → 1 column: empty-state panel disappears, trailing affordance appears', async () => {
+        const { fixture, boardState } = await mount({ columnsApiResult: of([]) });
+        fixture.detectChanges();
+        expect(fixture.debugElement.query(By.css('.board-page__empty-panel'))).toBeTruthy();
+
+        boardState.columns.set([
+          {
+            id: 'c-1',
+            name: 'To Do',
+            colorCode: null,
+            columnOrder: 0,
+            projectId: 'p-1'
+          }
+        ]);
+        fixture.detectChanges();
+
+        expect(fixture.debugElement.query(By.css('.board-page__empty-panel'))).toBeNull();
+        expect(
+          fixture.debugElement.query(By.css('.board-page__trailing-add'))
+        ).toBeTruthy();
+      });
+
+      it('1 → 0 columns: trailing affordance disappears, empty-state panel appears', async () => {
+        const { fixture, boardState } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })])
+        });
+        fixture.detectChanges();
+        expect(
+          fixture.debugElement.query(By.css('.board-page__trailing-add'))
+        ).toBeTruthy();
+
+        boardState.columns.set([]);
+        fixture.detectChanges();
+
+        expect(
+          fixture.debugElement.query(By.css('.board-page__trailing-add'))
+        ).toBeNull();
+        expect(fixture.debugElement.query(By.css('.board-page__empty-panel'))).toBeTruthy();
+      });
+    });
+
+    describe('Unmount during in-flight submit', () => {
+      it('destroying the component during an in-flight create does not throw', async () => {
+        const pending = new Subject<ColumnResponseDto>();
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'c-1' })]),
+          createColumnResult: pending.asObservable()
+        });
+        fixture.detectChanges();
+
+        component.handleAddColumnSubmit('Blocked');
+        expect(component.createColumnSubmitting()).toBe(true);
+
+        // Destroy BEFORE the HTTP response lands — takeUntilDestroyed must cancel.
+        fixture.destroy();
+
+        // Late emission must NOT throw (subscription is torn down).
+        expect(() => {
+          pending.next({
+            id: 'col-late',
+            name: 'Late',
+            colorCode: null,
+            columnOrder: 1,
+            projectId: 'p-1',
+            createdAt: '',
+            updatedAt: ''
+          });
+          pending.complete();
+        }).not.toThrow();
+      });
     });
   });
 });

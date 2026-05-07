@@ -19,6 +19,7 @@ import {
 } from '../../../core/models/realtime-events';
 import { BoardColumn } from './board-state.model';
 import { TaskResponseDto } from '../models/task.model';
+import { ColumnResponseDto } from '../models/column.model';
 
 interface MockSignalRService {
   connectionState: WritableSignal<SignalRConnectionState>;
@@ -675,6 +676,173 @@ describe('BoardStateService', () => {
       const buckets = service.tasksByColumnId();
       expect(buckets['col-keep']?.map(t => t.id)).toEqual(['t-keep']);
       expect(buckets['col-drop']).toBeUndefined();
+    });
+  });
+
+  describe('applyCreatedColumn() (issue #77)', () => {
+    const makeColumnDto = (partial?: Partial<ColumnResponseDto>): ColumnResponseDto => ({
+      id: 'col-new',
+      name: 'Blocked',
+      colorCode: null,
+      columnOrder: 3,
+      projectId: PROJECT_ID,
+      createdAt: '2026-05-04T00:00:00Z',
+      updatedAt: '2026-05-04T00:00:00Z',
+      ...partial
+    });
+
+    it('is a no-op when projectId does not match currentProjectId', () => {
+      service.enterBoard(PROJECT_ID);
+      service.applyCreatedColumn(
+        OTHER_PROJECT_ID,
+        makeColumnDto({ projectId: OTHER_PROJECT_ID })
+      );
+      expect(service.columns()).toEqual([]);
+    });
+
+    it('is a no-op when no board is active (currentProjectId null)', () => {
+      service.applyCreatedColumn(PROJECT_ID, makeColumnDto());
+      expect(service.columns()).toEqual([]);
+    });
+
+    it('appends a new column and preserves ascending columnOrder', () => {
+      service.enterBoard(PROJECT_ID);
+      // Seed with columns at order 1 and 3 so an order-2 insert lands in the middle.
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-a',
+        name: 'A',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-c',
+        name: 'C',
+        colorCode: null,
+        columnOrder: 3,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+
+      service.applyCreatedColumn(
+        PROJECT_ID,
+        makeColumnDto({ id: 'col-b', name: 'B', columnOrder: 2 })
+      );
+
+      expect(service.columns().map(c => c.id)).toEqual(['col-a', 'col-b', 'col-c']);
+    });
+
+    it('drops createdAt / updatedAt from the projected BoardColumn', () => {
+      service.enterBoard(PROJECT_ID);
+      service.applyCreatedColumn(PROJECT_ID, makeColumnDto({ id: 'col-new' }));
+      const stored = service.columns()[0];
+      expect(stored).toEqual({
+        id: 'col-new',
+        name: 'Blocked',
+        colorCode: null,
+        columnOrder: 3,
+        projectId: PROJECT_ID
+      });
+      // Belt-and-braces: no stray timestamp fields survive the projection.
+      expect(stored as unknown as { createdAt?: string }).not.toHaveProperty('createdAt');
+      expect(stored as unknown as { updatedAt?: string }).not.toHaveProperty('updatedAt');
+    });
+
+    it('is idempotent — calling it twice with the same DTO leaves a single column in state', () => {
+      service.enterBoard(PROJECT_ID);
+      const dto = makeColumnDto({ id: 'col-new', columnOrder: 1 });
+      service.applyCreatedColumn(PROJECT_ID, dto);
+      service.applyCreatedColumn(PROJECT_ID, dto);
+      expect(service.columns().length).toBe(1);
+      expect(service.columns()[0].id).toBe('col-new');
+    });
+
+    it('applyCreatedColumn + subsequent ColumnCreated echo with the same id does not double-insert', () => {
+      service.enterBoard(PROJECT_ID);
+
+      // Client-side HTTP-success path.
+      service.applyCreatedColumn(
+        PROJECT_ID,
+        makeColumnDto({ id: 'col-echo', name: 'Echo', columnOrder: 2 })
+      );
+      expect(service.columns().length).toBe(1);
+
+      // SignalR echo of the same id — shared helper dedupes by id.
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-echo',
+        name: 'Echo',
+        colorCode: null,
+        columnOrder: 2,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.columns().length).toBe(1);
+    });
+
+    it('ColumnCreated echo received BEFORE applyCreatedColumn still dedupes on the subsequent HTTP success', () => {
+      service.enterBoard(PROJECT_ID);
+
+      // Echo lands first (rare but possible under slow local CPU + fast signalR).
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-early',
+        name: 'Early',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.columns().length).toBe(1);
+
+      // HTTP success reply carries the same id — must not double-insert.
+      service.applyCreatedColumn(
+        PROJECT_ID,
+        makeColumnDto({ id: 'col-early', name: 'Early', columnOrder: 1 })
+      );
+      expect(service.columns().length).toBe(1);
+    });
+
+    it('is a safe no-op on a null/undefined dto (defensive)', () => {
+      service.enterBoard(PROJECT_ID);
+      expect(() =>
+        service.applyCreatedColumn(PROJECT_ID, null as unknown as ColumnResponseDto)
+      ).not.toThrow();
+      expect(() =>
+        service.applyCreatedColumn(PROJECT_ID, undefined as unknown as ColumnResponseDto)
+      ).not.toThrow();
+      expect(service.columns()).toEqual([]);
+    });
+
+    it('applyCreatedColumn + out-of-order ColumnCreated with a DIFFERENT id both appear, sorted by columnOrder', () => {
+      // Tech-spec QA case: "Two tabs / concurrent echo — `applyCreatedColumn`
+      // then an out-of-order `ColumnCreated` with a DIFFERENT id → both
+      // appear, sorted by `columnOrder`."
+      service.enterBoard(PROJECT_ID);
+
+      // Client's own HTTP success — arrives first, columnOrder 2.
+      service.applyCreatedColumn(
+        PROJECT_ID,
+        makeColumnDto({ id: 'col-mine', name: 'Mine', columnOrder: 2 })
+      );
+      // Another user's column — echoes in after, with a smaller columnOrder.
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-theirs',
+        name: 'Theirs',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+
+      // Both present, sorted ascending by columnOrder — the lower-order
+      // "Theirs" lands in front despite arriving second.
+      expect(service.columns().map(c => c.id)).toEqual(['col-theirs', 'col-mine']);
+      expect(service.columns().map(c => c.columnOrder)).toEqual([1, 2]);
     });
   });
 
