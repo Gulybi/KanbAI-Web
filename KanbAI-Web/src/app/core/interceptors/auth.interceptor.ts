@@ -32,15 +32,21 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      // A 401 from the auth endpoints themselves means "bad credentials" —
-      // the login/register forms are responsible for surfacing that to the
-      // user. The global logout-on-401 handler is for expired/invalid
-      // tokens on authenticated endpoints only.
+      // Three-way 401 decision (see docs/handoffs/issue_68_tech_spec.md / #68):
+      //   1. Auth endpoints (/auth/login, /auth/register): propagate untouched
+      //      so the login/register forms surface "bad credentials" inline.
+      //   2. Non-auth endpoint, JWT still stored: propagate untouched. This
+      //      is a per-resource 401 (e.g. invite-endpoint authorisation) and
+      //      the feature layer owns the inline copy. Global logout here
+      //      would unmount the feature before its error branch could run.
+      //   3. Non-auth endpoint, no JWT stored: treat as genuine session
+      //      expiry — logout and redirect to /login (AC5).
+      // 403 is never a session-expiry signal and is propagated unchanged.
       const isAuthEndpoint =
         req.url.startsWith(`${environment.apiUrl}/auth/login`) ||
         req.url.startsWith(`${environment.apiUrl}/auth/register`);
 
-      if (error.status === 401 && !isAuthEndpoint) {
+      if (error.status === 401 && !isAuthEndpoint && !hasValidToken()) {
         authService.logout();
         router.navigate(['/login']);
       }
@@ -49,3 +55,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     })
   );
 };
+
+function hasValidToken(): boolean {
+  const token = localStorage.getItem('jwt_token');
+  return typeof token === 'string' && token.length > 0;
+}

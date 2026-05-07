@@ -402,10 +402,11 @@ describe('authInterceptor', () => {
       expect(router.navigate).not.toHaveBeenCalled();
     });
 
-    it('still calls logout and navigates to /login when a 401 comes from a non-auth endpoint', () => {
+    it('calls logout and navigates to /login on a 401 from a non-auth endpoint when no JWT is stored', () => {
       const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
       const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
 
+      // No token seeded — `localStorage` is cleared in beforeEach.
       httpClient.get(`${environment.apiUrl}/project`).subscribe({
         next: () => {
           throw new Error('should have failed with 401');
@@ -420,6 +421,80 @@ describe('authInterceptor', () => {
 
       expect(authService.logout).toHaveBeenCalledTimes(1);
       expect(router.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    it('does NOT call logout or navigate on a 401 from a non-auth endpoint when a JWT is still stored', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      localStorage.setItem('jwt_token', 'x.y.z');
+
+      let caughtStatus: number | undefined;
+      httpClient.get(`${environment.apiUrl}/project`).subscribe({
+        next: () => {
+          throw new Error('should have failed with 401');
+        },
+        error: (error) => {
+          caughtStatus = error.status;
+        }
+      });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/project`);
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      expect(caughtStatus).toBe(401);
+      expect(authService.logout).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call logout or navigate on a 403 from a non-auth endpoint', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      localStorage.setItem('jwt_token', 'x.y.z');
+
+      let caughtStatus: number | undefined;
+      httpClient.get(`${environment.apiUrl}/project`).subscribe({
+        next: () => {
+          throw new Error('should have failed with 403');
+        },
+        error: (error) => {
+          caughtStatus = error.status;
+        }
+      });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/project`);
+      req.flush('Forbidden', { status: 403, statusText: 'Forbidden' });
+
+      expect(caughtStatus).toBe(403);
+      expect(authService.logout).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call logout or navigate on a 401 from POST /project/:id/members when a JWT is stored', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      localStorage.setItem('jwt_token', 'x.y.z');
+
+      let caughtStatus: number | undefined;
+      httpClient
+        .post(`${environment.apiUrl}/project/proj-1/members`, { email: 'x@y.z' })
+        .subscribe({
+          next: () => {
+            throw new Error('should have failed with 401');
+          },
+          error: (error) => {
+            caughtStatus = error.status;
+          }
+        });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/project/proj-1/members`);
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      expect(caughtStatus).toBe(401);
+      expect(authService.logout).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
     });
   });
 });

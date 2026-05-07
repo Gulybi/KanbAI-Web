@@ -260,6 +260,34 @@ describe('MembersStateService', () => {
       expect(service.selectForProject(PROJECT_ID)().members.map(m => m.userId)).toEqual(['u-existing']);
     });
 
+    // Regression guard for issue #68: addMemberByEmail must map a 401 to
+    // the session-expired copy via throwError and must not mutate any
+    // auth state. The interceptor fix is what makes this mapping reachable
+    // at runtime (previously the global 401 handler unmounted the caller
+    // before this branch ran).
+    it('maps 401 to session-expired copy without touching auth state (issue #68)', () => {
+      let caught: unknown;
+      service.addMemberByEmail(PROJECT_ID, 'x@y.com').subscribe({
+        next: () => {
+          /* unreachable */
+        },
+        error: err => (caught = err)
+      });
+
+      httpMock
+        .expectOne(`${BASE_URL}/${PROJECT_ID}/members`)
+        .flush({ errors: [], message: null }, { status: 401, statusText: 'Unauthorized' });
+
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe('Your session has expired. Please sign in again.');
+      // No side effect on auth state — currentUser remains populated.
+      expect(currentUserSig()).toBe(MOCK_USER);
+      // Cache unchanged.
+      expect(
+        service.selectForProject(PROJECT_ID)().members.map(m => m.userId)
+      ).toEqual(['u-existing']);
+    });
+
     it('surfaces the 403 owner-only message', () => {
       let caught: unknown;
       service.addMemberByEmail(PROJECT_ID, 'x@y.com').subscribe({
