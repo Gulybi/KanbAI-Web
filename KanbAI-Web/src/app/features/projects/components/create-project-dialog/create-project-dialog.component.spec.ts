@@ -540,4 +540,27 @@ describe('CreateProjectDialogComponent', () => {
     });
     subject.complete();
   });
+
+  // ------------------------------------------------------------------
+  // Regression test for issue #76 (NG0950 propagation to parent form)
+  // ------------------------------------------------------------------
+
+  it('root form.invalid flips to false after mount with a valid Title and default columns', async () => {
+    // Pre-fix, the child ColumnDraftListComponent throws NG0950 during its
+    // constructor-microtask, which swallows its init side effects and leaves
+    // the root FormGroup's validity in an inconsistent state. Post-fix, the
+    // child initializes cleanly and the root form reflects a valid state as
+    // soon as the Title is filled in.
+    const form = internal(component).form;
+    form.controls.name.setValue('Alpha');
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(form.controls.name.valid).toBe(true);
+    expect(form.controls.columns.valid).toBe(true);
+    expect(form.valid).toBe(true);
+    expect(form.invalid).toBe(false);
+  });
 });

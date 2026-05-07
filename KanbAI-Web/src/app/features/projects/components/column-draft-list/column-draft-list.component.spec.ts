@@ -5,7 +5,7 @@ import {
   signal
 } from '@angular/core';
 import { FormArray, FormGroup } from '@angular/forms';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { ColumnDraftListComponent } from './column-draft-list.component';
 import {
@@ -202,5 +202,82 @@ describe('ColumnDraftListComponent', () => {
     expect(removeButtons[1].getAttribute('aria-label')).toBe(
       "Remove column 'In Progress'"
     );
+  });
+
+  // ------------------------------------------------------------------
+  // Regression tests for issue #76 (NG0950 init crash)
+  // ------------------------------------------------------------------
+
+  it('initializes without throwing NG0950 when provided a valid FormArray input', async () => {
+    // Reset so we do a clean re-mount with the spy in place.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const freshFixture = await mount();
+      expect(freshFixture.componentInstance).toBeDefined();
+
+      const ng0950Calls = errorSpy.mock.calls.filter(call =>
+        call.some(arg => typeof arg === 'string' && /NG0950/i.test(arg))
+      );
+      expect(ng0950Calls).toHaveLength(0);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('duplicateFlags reflect validator output after statusChanges fires (requires live subscription)', async () => {
+    // This test fails if the statusChanges subscription is not wired up in ngOnInit.
+    // Post-mount seeding exercises the live subscription path (not the initial tick).
+    host.array.at(1).controls.name.setValue('to do');
+    host.array.updateValueAndValidity();
+    await flushAsync();
+    fixture.detectChanges();
+
+    const rows: NodeListOf<HTMLElement> = fixture.nativeElement.querySelectorAll(
+      '.column-draft-list__row'
+    );
+    expect(
+      rows[1].classList.contains('column-draft-list__row--duplicate')
+    ).toBe(true);
+  });
+
+  it('applies the seeded-duplicate flag on first render (initial arrayErrorTick bump)', async () => {
+    // Build a host whose FormArray already contains duplicates at construction.
+    @Component({
+      standalone: true,
+      imports: [ColumnDraftListComponent],
+      template: `
+        <app-column-draft-list
+          [formArray]="array"
+          [disabled]="false"
+        ></app-column-draft-list>
+      `,
+      changeDetection: ChangeDetectionStrategy.OnPush
+    })
+    class SeededHostComponent {
+      readonly array = new FormArray<FormGroup<ColumnDraftFormShape>>(
+        [
+          buildColumnDraftGroup('To Do'),
+          buildColumnDraftGroup('To Do')
+        ],
+        { validators: [minColumnsValidator, duplicateColumnNamesValidator] }
+      );
+    }
+
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [SeededHostComponent]
+    }).compileComponents();
+    const seededFixture = TestBed.createComponent(SeededHostComponent);
+    seededFixture.detectChanges();
+    await flushAsync();
+    seededFixture.detectChanges();
+
+    const rows: NodeListOf<HTMLElement> =
+      seededFixture.nativeElement.querySelectorAll('.column-draft-list__row');
+    // Without the initial arrayErrorTick bump, statusChanges would not fire for
+    // construction-time errors and this row would not carry the duplicate class.
+    expect(
+      rows[1].classList.contains('column-draft-list__row--duplicate')
+    ).toBe(true);
   });
 });
