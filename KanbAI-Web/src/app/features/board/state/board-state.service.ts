@@ -204,8 +204,9 @@ export class BoardStateService extends BaseStateService<BoardState> {
   }
 
   /**
-   * Append to the bucket of `evt.columnId` iff that column is known.
-   * Dedupe by id. Maintains `taskOrder` ascending.
+   * SignalR handler for `TaskCreated` — delegates to the shared
+   * {@link appendBoardTaskIfNew} helper so this path and the HTTP-success
+   * path (`applyCreatedTask`) agree on dedupe + project-guard semantics.
    *
    * Attribution: the backend only broadcasts to the joined group, so the
    * combination of (client is in this group) + (`currentProjectId !== null`)
@@ -216,27 +217,41 @@ export class BoardStateService extends BaseStateService<BoardState> {
     if (!evt || this.getState().currentProjectId === null) {
       return;
     }
-    const column = this.getState().columns.find(c => c.id === evt.columnId);
-    if (!column) {
-      return;
-    }
-    const bucket = this.getState().tasksByColumnId[evt.columnId] ?? [];
-    if (bucket.some(t => t.id === evt.id)) {
-      return;
-    }
-    const newTask: BoardTask = {
+    this.appendBoardTaskIfNew(this.getState().currentProjectId!, {
       id: evt.id,
       title: evt.title,
       content: evt.content,
       taskOrder: evt.taskOrder,
       columnId: evt.columnId,
       assignedId: evt.assignedId
-    };
-    const next = [...bucket, newTask].sort((a, b) => a.taskOrder - b.taskOrder);
+    });
+  }
+
+  /**
+   * Shared append-if-new helper used by both the SignalR `TaskCreated`
+   * handler (`onTaskCreated`) and the HTTP-success entry point
+   * (`applyCreatedTask`, issue #78). Guarantees the two paths follow
+   * identical project-guard, column-known guard, id-dedupe, and
+   * sort-by-`taskOrder` semantics — so a client's own create + SignalR
+   * echo of that create never double-insert.
+   */
+  private appendBoardTaskIfNew(projectId: string, task: BoardTask): void {
+    if (projectId !== this.getState().currentProjectId) {
+      return;
+    }
+    const column = this.getState().columns.find(c => c.id === task.columnId);
+    if (!column) {
+      return;
+    }
+    const bucket = this.getState().tasksByColumnId[task.columnId] ?? [];
+    if (bucket.some(t => t.id === task.id)) {
+      return;
+    }
+    const next = [...bucket, task].sort((a, b) => a.taskOrder - b.taskOrder);
     this.setState({
       tasksByColumnId: {
         ...this.getState().tasksByColumnId,
-        [evt.columnId]: next
+        [task.columnId]: next
       }
     });
   }
@@ -308,6 +323,37 @@ export class BoardStateService extends BaseStateService<BoardState> {
       colorCode: dto.colorCode,
       columnOrder: dto.columnOrder,
       projectId: dto.projectId
+    });
+  }
+
+  /**
+   * Public entry point for HTTP-driven task creates (issue #78). The
+   * caller passes the full `TaskResponseDto` returned by
+   * `TasksApiService.createTask`; the method projects it to a
+   * {@link BoardTask} (dropping `createdAt`/`updatedAt`) and delegates to
+   * the shared {@link appendBoardTaskIfNew} helper so this path and the
+   * SignalR `onTaskCreated` echo path agree on dedupe semantics.
+   *
+   * Behaviour:
+   *  - No-op when `projectId !== currentProjectId` (user navigated away).
+   *  - No-op when the target column is not in state (e.g. ColumnDeleted
+   *    arrived between HTTP submit and HTTP 201).
+   *  - No-op when a task with the same id already exists in that column's
+   *    bucket (idempotent; makes the HTTP-success + SignalR-echo sequence
+   *    safe on the client's own create).
+   *  - Otherwise appends and re-sorts by `taskOrder` ascending.
+   */
+  applyCreatedTask(projectId: string, dto: TaskResponseDto): void {
+    if (!dto) {
+      return;
+    }
+    this.appendBoardTaskIfNew(projectId, {
+      id: dto.id,
+      title: dto.title,
+      content: dto.content,
+      taskOrder: dto.taskOrder,
+      columnId: dto.columnId,
+      assignedId: dto.assignedId
     });
   }
 

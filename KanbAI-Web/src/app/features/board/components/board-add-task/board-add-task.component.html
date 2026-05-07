@@ -1,0 +1,37 @@
+<form
+  class="board-add-task"
+  aria-label="Add task"
+  (submit)="onSubmit($event)"
+  (keydown)="onKeydown($event)"
+>
+  <div #titleWrap>
+    <app-form-input
+      label="Task title"
+      placeholder="e.g. Wire up onboarding flow"
+      [required]="true"
+      [control]="titleControl"
+    />
+  </div>
+
+  @if (submitError()) {
+    <p class="board-add-task__error" role="alert">{{ submitError() }}</p>
+  }
+
+  <div class="board-add-task__actions">
+    <button
+      type="submit"
+      class="board-add-task__submit"
+      [disabled]="titleControl.invalid || submitting()"
+    >
+      {{ submitting() ? 'Adding…' : 'Add' }}
+    </button>
+    <button
+      type="button"
+      class="board-add-task__cancel"
+      [disabled]="submitting()"
+      (click)="onCancel()"
+    >
+      Cancel
+    </button>
+  </div>
+</form>

@@ -9,6 +9,7 @@ import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 
 import { BoardColumn, BoardTask } from '../../state/board-state.model';
 import { TaskCardComponent } from '../task-card/task-card.component';
+import { BoardAddTaskComponent } from '../board-add-task/board-add-task.component';
 
 /**
  * Presentational column. Hosts a CDK drop list and renders a stack of
@@ -18,11 +19,16 @@ import { TaskCardComponent } from '../task-card/task-card.component';
  * verbatim up to the smart `BoardPageComponent`, per the tech spec §"CDK
  * wiring map". It owns no HTTP calls, no state service injection, no
  * business logic.
+ *
+ * Issue #78 adds a footer slot below the task list that renders either
+ * the "Add task" trigger (default) or the inline
+ * `BoardAddTaskComponent`. The parent owns the open/submitting/error
+ * state per column and drives the swap via `[addTaskOpen]`.
  */
 @Component({
   selector: 'app-board-column',
   standalone: true,
-  imports: [DragDropModule, TaskCardComponent],
+  imports: [DragDropModule, TaskCardComponent, BoardAddTaskComponent],
   templateUrl: './board-column.component.html',
   styleUrl: './board-column.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -63,6 +69,27 @@ export class BoardColumnComponent {
   /** Re-emits the task-card activation with the full task payload. */
   readonly taskOpened = output<BoardTask>();
 
+  // ---------------- Issue #78 — add-task flow ----------------
+
+  /** True when this column's add-task form is mounted in the footer slot. */
+  readonly addTaskOpen = input<boolean>(false);
+
+  /** True while the parent's create-task HTTP call is in flight. */
+  readonly addTaskSubmitting = input<boolean>(false);
+
+  /** Inline server-error copy for this column's add-task form; null hides. */
+  readonly addTaskError = input<string | null>(null);
+
+  /** User clicked the "Add task" trigger — parent should open the form. */
+  readonly addTaskRequested = output<void>();
+
+  /** Child form emitted a validated trimmed title. */
+  readonly addTaskSubmitted = output<string>();
+
+  /** User cancelled the add-task form (Escape or Cancel button). */
+  readonly addTaskCancelled = output<void>();
+
+
   /** Stable drop-list id used by the parent's `dropListIds` selector. */
   readonly dropListId = computed(() => `drop-list-${this.column().id}`);
 
@@ -72,6 +99,22 @@ export class BoardColumnComponent {
     const t = this.tasks();
     return `${c.name} column, ${t.length} tasks`;
   });
+
+  /** Accessible name for the footer trigger (disambiguates across columns). */
+  readonly addTaskTriggerLabel = computed(
+    () => `Add task to ${this.column().name}`
+  );
+
+  /**
+   * Stable DOM id for the "Add task" trigger. The parent looks this up
+   * via `document.getElementById` to restore focus after a successful
+   * create or cancel (tech spec D8). Stable across open/close cycles so
+   * the ref never goes stale.
+   */
+  readonly addTaskTriggerId = computed(
+    () => `add-task-trigger-${this.column().id}`
+  );
+
 
   /**
    * Per-card rollback trigger: returns `rolledBackTrigger` when this card

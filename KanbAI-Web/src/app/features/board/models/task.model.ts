@@ -27,3 +27,21 @@ export interface MoveTaskDto {
 
 /** Envelope alias for the move endpoint. */
 export type TaskMoveResponse = ApiResponse<TaskResponseDto>;
+
+/**
+ * Request body for `POST /api/task/column/{columnId}`. Mirrors the
+ * backend `CreateTaskDto` shape at .claude/backend_api_map.md:270-276.
+ *
+ * Issue #78 only populates `title`; `content` and `assignedId` are
+ * optional on the backend and explicitly out of scope — the client omits
+ * them on create. `taskOrder` is NOT part of the DTO: the backend
+ * assigns it server-side.
+ */
+export interface CreateTaskDto {
+  title: string;
+  content?: string | null;
+  assignedId?: string | null;
+}
+
+/** Envelope alias for the single-DTO task-create response. */
+export type TaskCreateResponse = ApiResponse<TaskResponseDto>;
