@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   TasksApiService,
   mapTaskCreateErrorToUserMessage,
+  mapTaskDescriptionErrorToUserMessage,
   mapTaskListErrorToUserMessage,
   mapTaskMoveErrorToUserMessage
 } from './tasks-api.service';
@@ -13,11 +14,14 @@ import {
   CreateTaskDto,
   MoveTaskDto,
   TaskCreateResponse,
+  TaskDescriptionUpdateResponse,
   TaskListResponse,
   TaskMoveResponse,
-  TaskResponseDto
+  TaskResponseDto,
+  UpdateTaskDescriptionDto
 } from '../models/task.model';
 import { environment } from '../../../../environments/environment';
+import { TASK_DESCRIPTION_COPY } from '../components/task-description-section/task-description-copy';
 
 describe('TasksApiService', () => {
   let service: TasksApiService;
@@ -531,6 +535,202 @@ describe('TasksApiService', () => {
       expect(mapTaskListErrorToUserMessage('whatever')).toBe(
         "We couldn't load this board. Please try again."
       );
+    });
+  });
+
+  describe('updateTaskDescription()', () => {
+    const task: TaskResponseDto = {
+      id: 't-1',
+      title: 'Design login page',
+      content: 'new body',
+      taskOrder: 0,
+      columnId: 'col-a',
+      assignedId: null,
+      createdAt: '2026-05-08T00:00:00Z',
+      updatedAt: '2026-05-08T00:00:00Z'
+    };
+    const dto: UpdateTaskDescriptionDto = { content: 'new body' };
+
+    it('issues a PUT to /task/{taskId}/description with body', () => {
+      const taskId = 'task id with space';
+      service.updateTaskDescription(taskId, dto).subscribe();
+
+      const expectedUrl = `${baseUrl}/${encodeURIComponent(taskId)}/description`;
+      const req = httpMock.expectOne(expectedUrl);
+      expect(req.request.method).toBe('PUT');
+      expect(req.request.body).toEqual(dto);
+      req.flush({
+        success: true,
+        message: null,
+        errors: [],
+        data: task
+      } satisfies TaskDescriptionUpdateResponse);
+    });
+
+    it('unwraps { success: true, data: TaskResponseDto } on success', () => {
+      let emitted: TaskResponseDto | undefined;
+      service.updateTaskDescription('t-1', dto).subscribe(t => (emitted = t));
+      httpMock
+        .expectOne(`${baseUrl}/t-1/description`)
+        .flush({
+          success: true,
+          message: null,
+          errors: [],
+          data: task
+        } satisfies TaskDescriptionUpdateResponse);
+      expect(emitted).toEqual(task);
+    });
+
+    it('projects envelope { success: false } into an observable error', () => {
+      let caught: unknown;
+      service.updateTaskDescription('t-1', dto).subscribe({
+        next: () => {
+          /* unreachable */
+        },
+        error: err => (caught = err)
+      });
+      httpMock
+        .expectOne(`${baseUrl}/t-1/description`)
+        .flush({
+          success: false,
+          message: 'nope',
+          errors: ['bad'],
+          data: null
+        } satisfies TaskDescriptionUpdateResponse);
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe('bad');
+    });
+
+    it('surfaces HTTP errors through the error branch', () => {
+      let caught: unknown;
+      service.updateTaskDescription('t-1', dto).subscribe({
+        next: () => {
+          /* unreachable */
+        },
+        error: err => (caught = err)
+      });
+      httpMock
+        .expectOne(`${baseUrl}/t-1/description`)
+        .flush(
+          { success: false, message: null, errors: [], data: null },
+          { status: 404, statusText: 'Not Found' }
+        );
+      expect(caught).toBeInstanceOf(HttpErrorResponse);
+    });
+  });
+
+  describe('clearTaskDescription()', () => {
+    it('issues a DELETE to /task/{taskId}/description', () => {
+      service.clearTaskDescription('task id with space').subscribe();
+      const expectedUrl = `${baseUrl}/${encodeURIComponent('task id with space')}/description`;
+      const req = httpMock.expectOne(expectedUrl);
+      expect(req.request.method).toBe('DELETE');
+      req.flush(null, { status: 204, statusText: 'No Content' });
+    });
+
+    it('completes without a value on 204', () => {
+      let emitted: unknown = 'not-yet';
+      service.clearTaskDescription('t-1').subscribe({
+        next: v => (emitted = v),
+        complete: () => (emitted = 'done')
+      });
+      httpMock.expectOne(`${baseUrl}/t-1/description`).flush(null, {
+        status: 204,
+        statusText: 'No Content'
+      });
+      expect(emitted).toBe('done');
+    });
+
+    it('surfaces HTTP errors through the error branch', () => {
+      let caught: unknown;
+      service.clearTaskDescription('t-1').subscribe({
+        next: () => {
+          /* unreachable */
+        },
+        error: err => (caught = err)
+      });
+      httpMock
+        .expectOne(`${baseUrl}/t-1/description`)
+        .flush(null, { status: 404, statusText: 'Not Found' });
+      expect(caught).toBeInstanceOf(HttpErrorResponse);
+    });
+  });
+
+  describe('mapTaskDescriptionErrorToUserMessage()', () => {
+    const makeErr = (status: number, body?: unknown) =>
+      new HttpErrorResponse({ status, statusText: 'x', error: body });
+
+    it('maps status 0 to network copy (save + clear)', () => {
+      const expected = {
+        kind: 'inline' as const,
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_NETWORK
+      };
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(0), 'save')).toEqual(expected);
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(0), 'clear')).toEqual(expected);
+    });
+
+    it('maps 403 to the permission copy', () => {
+      const expected = {
+        kind: 'inline' as const,
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_PERMISSION
+      };
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(403), 'save')).toEqual(expected);
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(403), 'clear')).toEqual(expected);
+    });
+
+    it('maps 404 to not-found (save + clear)', () => {
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(404), 'save')).toEqual({
+        kind: 'not-found'
+      });
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(404), 'clear')).toEqual({
+        kind: 'not-found'
+      });
+    });
+
+    it('maps 400 on save to server-errors with envelope errors', () => {
+      const err = makeErr(400, { errors: ['server msg'] });
+      expect(mapTaskDescriptionErrorToUserMessage(err, 'save')).toEqual({
+        kind: 'server-errors',
+        texts: ['server msg']
+      });
+    });
+
+    it('maps 400 on save with no errors array to empty server-errors', () => {
+      const err = makeErr(400, {});
+      expect(mapTaskDescriptionErrorToUserMessage(err, 'save')).toEqual({
+        kind: 'server-errors',
+        texts: []
+      });
+    });
+
+    it('maps 400 on clear to generic save copy (defensive)', () => {
+      const err = makeErr(400, { errors: ['ignored'] });
+      expect(mapTaskDescriptionErrorToUserMessage(err, 'clear')).toEqual({
+        kind: 'inline',
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
+      });
+    });
+
+    it('maps 5xx and other statuses to the generic save copy', () => {
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(500), 'save')).toEqual({
+        kind: 'inline',
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
+      });
+      expect(mapTaskDescriptionErrorToUserMessage(makeErr(418), 'save')).toEqual({
+        kind: 'inline',
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
+      });
+    });
+
+    it('maps non-HttpErrorResponse values to the generic save copy', () => {
+      expect(mapTaskDescriptionErrorToUserMessage(new Error('x'), 'save')).toEqual({
+        kind: 'inline',
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
+      });
+      expect(mapTaskDescriptionErrorToUserMessage('whatever', 'clear')).toEqual({
+        kind: 'inline',
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
+      });
     });
   });
 });

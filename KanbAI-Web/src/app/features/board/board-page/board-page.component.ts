@@ -32,8 +32,10 @@ import { ColumnResponseDto, CreateColumnDto } from '../models/column.model';
 import { BoardColumnComponent } from '../components/board-column/board-column.component';
 import { BoardAddColumnComponent } from '../components/board-add-column/board-add-column.component';
 import { TaskDetailPanelComponent } from '../components/task-detail-panel/task-detail-panel.component';
+import { TaskNotFoundToastComponent } from '../components/task-not-found-toast/task-not-found-toast.component';
 import type { DropzoneFileSelectedEvent } from '../../attachments/models/dropzone.model';
 import { AttachmentsStateService } from '../../attachments/state/attachments-state.service';
+import { TASK_DESCRIPTION_COPY } from '../components/task-description-section/task-description-copy';
 
 /** Auto-dismiss duration (ms) for the inline move-error strip. */
 const MOVE_ERROR_AUTO_DISMISS_MS = 5000;
@@ -67,7 +69,8 @@ const EMPTY_DRAFT: TaskDraftState = {
     DragDropModule,
     BoardColumnComponent,
     BoardAddColumnComponent,
-    TaskDetailPanelComponent
+    TaskDetailPanelComponent,
+    TaskNotFoundToastComponent
   ],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
@@ -136,6 +139,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
    * drawer is closed. Set by `handleTaskOpened`, cleared by `handleTaskDetailClosed`.
    */
   readonly selectedTask = signal<BoardTask | null>(null);
+
+  /**
+   * 404 toast surfaced when description save/clear hits a deleted task
+   * (issue #91). Null when the toast is not showing.
+   */
+  readonly taskNotFoundToast = signal<{ message: string } | null>(null);
 
   // ---------------- Issue #77 — add-column flow ----------------
 
@@ -292,6 +301,22 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   /** Invoked by `TaskDetailPanelComponent.panelClosed`. */
   handleTaskDetailClosed(): void {
     this.selectedTask.set(null);
+  }
+
+  /**
+   * Invoked when the description child reports a 404 (issue #91). Closes
+   * the panel and surfaces the "This task no longer exists" toast.
+   */
+  handleTaskNotFound(): void {
+    this.selectedTask.set(null);
+    this.taskNotFoundToast.set({
+      message: TASK_DESCRIPTION_COPY.TOAST_TASK_NOT_FOUND
+    });
+  }
+
+  /** Dismiss handler for the 404 toast (click or auto-dismiss). */
+  dismissTaskNotFoundToast(): void {
+    this.taskNotFoundToast.set(null);
   }
 
   /**

@@ -1,0 +1,490 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  display: block;
+}
+
+.task-description {
+  display: flex;
+  flex-direction: column;
+  gap: $space-xs;
+  position: relative;
+}
+
+// ---- Section header row (label + read-mode actions) --------------------
+.task-description__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-sm;
+  min-height: 24px;
+}
+
+.task-description__label {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: $text-secondary;
+}
+
+.task-description__read-actions {
+  display: flex;
+  align-items: center;
+  gap: $space-xxs;
+}
+
+// ---- Read-mode: text-button (filled) -----------------------------------
+.task-description__text-button {
+  appearance: none;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: $space-xs $space-sm;
+
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+
+  text-align: left;
+  cursor: text;
+  font-family: inherit;
+  font-size: $font-size-md;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast;
+
+  &:hover {
+    background: $bg-sidebar-light;
+    border-color: $border-light;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    background: $bg-sidebar-light;
+  }
+}
+
+// ---- Read-mode: empty-state affordance ---------------------------------
+.task-description__empty {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: $space-xs;
+  width: 100%;
+  min-height: 44px;
+  padding: $space-sm;
+
+  background: transparent;
+  border: 1px dashed $border-light;
+  border-radius: $radius-md;
+
+  text-align: left;
+  cursor: text;
+  font-family: inherit;
+  font-size: $font-size-md;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-secondary;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    color            $motion-fast;
+
+  &:hover {
+    background: $bg-sidebar-light;
+    border-color: $brand-primary;
+    color: $text-primary;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    background: $brand-primary-light;
+    border-color: $brand-primary;
+    color: $text-primary;
+  }
+}
+
+// ---- Read-mode: icon-text action buttons (Edit, Clear) -----------------
+.task-description__icon-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: $space-xxs;
+  padding: $space-xxs $space-xs;
+  min-height: 32px;
+
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: $radius-sm;
+
+  font-family: inherit;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  line-height: 1;
+  color: $text-secondary;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    color            $motion-fast,
+    border-color     $motion-fast;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+  }
+
+  &:hover {
+    background: $bg-sidebar-light;
+    color: $text-primary;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.task-description__icon-button--danger {
+  &:hover:not([disabled]) {
+    color: $status-high;
+  }
+}
+
+@media (max-width: #{$bp-md - 1px}) {
+  .task-description__icon-button {
+    min-height: 44px;
+    padding: $space-xs $space-sm;
+  }
+}
+
+// ---- Edit mode: remote-update banner -----------------------------------
+.task-description__banner {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: $space-sm;
+
+  padding: $space-xs $space-sm;
+
+  background: $bg-sidebar-light;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-average;
+  border-radius: $radius-md;
+
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  animation: task-description-banner-enter $motion-base both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 0.01ms;
+  }
+}
+
+.task-description__banner-text {
+  margin: 0;
+  color: $text-primary;
+}
+
+.task-description__banner-action {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: $space-xxs $space-xs;
+  min-height: 32px;
+
+  font-family: inherit;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-brand;
+  text-decoration: underline;
+  cursor: pointer;
+
+  transition: color $motion-fast;
+
+  &:hover { color: $brand-primary-hover; }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+    border-radius: $radius-sm;
+    text-decoration: none;
+  }
+
+  &[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// ---- Edit mode: label + textarea ---------------------------------------
+.task-description__editor-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.task-description__editor {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  max-height: 360px;
+  padding: $space-sm;
+
+  background: $bg-main;
+  border: 1px solid $border-light;
+  border-radius: $radius-md;
+
+  font-family: inherit;
+  font-size: $font-size-md;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  resize: vertical;
+
+  transition:
+    border-color $motion-fast,
+    box-shadow   $motion-fast;
+
+  &::placeholder {
+    color: $text-tertiary;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $brand-primary;
+    box-shadow: 0 0 0 3px $brand-primary-light;
+  }
+
+  &[aria-invalid='true'] {
+    border-color: $status-high;
+
+    &:focus {
+      box-shadow: 0 0 0 3px rgba(229, 107, 111, 0.18);
+    }
+  }
+
+  &[disabled] {
+    background: $bg-sidebar-light;
+    color: $text-secondary;
+    cursor: not-allowed;
+  }
+}
+
+// ---- Edit mode: meta row (counter + inline error) ----------------------
+.task-description__meta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: $space-sm;
+  align-items: center;
+  min-height: 20px;
+}
+
+.task-description__error {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: $space-xxs;
+
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  color: $status-high;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+  }
+}
+
+.task-description__counter {
+  margin: 0;
+  justify-self: end;
+
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  font-variant-numeric: tabular-nums;
+  color: $text-secondary;
+
+  transition: color $motion-fast;
+}
+
+.task-description__counter--over-limit {
+  color: $status-high;
+}
+
+// ---- Edit mode: actions row --------------------------------------------
+.task-description__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: $space-sm;
+
+  @media (max-width: #{$bp-sm - 1px}) {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: $space-xs;
+  }
+}
+
+.task-description__cancel {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: $space-sm $space-md;
+
+  background: transparent;
+  color: $text-primary;
+  border: 1px solid $border-light;
+  border-radius: $radius-md;
+
+  font-family: inherit;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  line-height: 1;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast;
+
+  &:hover:not([disabled]) { background: $bg-sidebar-light; }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.task-description__save {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 120px;
+  padding: $space-sm $space-md;
+  gap: $space-xxs;
+
+  background: $brand-primary;
+  color: $text-inverse;
+  border: 1px solid $brand-primary;
+  border-radius: $radius-md;
+
+  font-family: inherit;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  line-height: 1;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    transform        $motion-fast;
+
+  &:hover:not([disabled]) {
+    background: $brand-primary-hover;
+    border-color: $brand-primary-hover;
+  }
+
+  &:active:not([disabled]) { transform: translateY(1px); }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.task-description__save-dots {
+  display: inline-flex;
+  margin-left: $space-xxs;
+  gap: 2px;
+
+  &::before,
+  &::after,
+  & > span {
+    content: '.';
+    display: inline-block;
+    animation: task-description-dots 1.2s infinite;
+    animation-fill-mode: both;
+  }
+
+  & > span { animation-delay: 0.2s; }
+  &::after { animation-delay: 0.4s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    &::before, &::after, & > span { animation-duration: 0.01ms; }
+  }
+}
+
+@keyframes task-description-dots {
+  0%, 20%   { opacity: 0; transform: translateY(0); }
+  50%       { opacity: 1; transform: translateY(-1px); }
+  80%, 100% { opacity: 0; transform: translateY(0); }
+}
+
+@keyframes task-description-banner-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+// ---- Visually-hidden polite live region --------------------------------
+.task-description__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

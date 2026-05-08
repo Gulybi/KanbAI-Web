@@ -9,6 +9,8 @@ import type { DropzoneFileSelectedEvent } from '../../../attachments/models/drop
 import { AttachmentsStateService } from '../../../attachments/state/attachments-state.service';
 import { AttachmentUpload } from '../../../attachments/models/attachment-upload.model';
 import { UPLOAD_BLOCKED_REASON } from '../../../attachments/constants/upload-errors';
+import { TasksApiService } from '../../services/tasks-api.service';
+import { of } from 'rxjs';
 
 function makeTask(partial?: Partial<BoardTask>): BoardTask {
   return {
@@ -95,7 +97,14 @@ describe('TaskDetailPanelComponent', () => {
     await TestBed.configureTestingModule({
       imports: [TaskDetailPanelComponent],
       providers: [
-        { provide: AttachmentsStateService, useValue: mockState }
+        { provide: AttachmentsStateService, useValue: mockState },
+        {
+          provide: TasksApiService,
+          useValue: {
+            updateTaskDescription: vi.fn(() => of({} as never)),
+            clearTaskDescription: vi.fn(() => of(void 0))
+          }
+        }
       ]
     }).compileComponents();
 
@@ -156,104 +165,22 @@ describe('TaskDetailPanelComponent', () => {
     expect(selected[0]).toBe(event);
   });
 
-  describe('description section (#83)', () => {
-    it('renders the description text when content is non-empty', () => {
+  describe('description section (#91)', () => {
+    it('renders the app-task-description-section child with the task bound', () => {
       fixture.componentRef.setInput('task', makeTask({ content: 'Hello world.' }));
       fixture.detectChanges();
 
-      const desc = fixture.debugElement.query(
-        By.css('.task-detail-panel__description')
+      const section = fixture.debugElement.query(
+        By.css('app-task-description-section')
       );
-      expect(desc).toBeTruthy();
-      expect(desc.nativeElement.textContent.trim()).toBe('Hello world.');
-      expect(
-        fixture.debugElement.query(By.css('.task-detail-panel__description-empty'))
-      ).toBeNull();
+      expect(section).toBeTruthy();
     });
 
-    it('preserves line breaks via white-space: pre-wrap', () => {
-      fixture.componentRef.setInput('task', makeTask({ content: 'line 1\nline 2' }));
-      fixture.detectChanges();
-
-      const desc = fixture.debugElement.query(
-        By.css('.task-detail-panel__description')
-      );
-      expect(desc).toBeTruthy();
-      // Raw newline survives the DOM round-trip (no <br> injection, no split).
-      expect(desc.nativeElement.textContent).toContain('\n');
-      const style = getComputedStyle(desc.nativeElement as HTMLElement);
-      expect(style.whiteSpace).toBe('pre-wrap');
-    });
-
-    it('renders the empty-state when content is null', () => {
-      fixture.componentRef.setInput('task', makeTask({ content: null }));
-      fixture.detectChanges();
-
-      const empty = fixture.debugElement.query(
-        By.css('.task-detail-panel__description-empty')
-      );
-      expect(empty).toBeTruthy();
-      expect(empty.nativeElement.textContent.trim()).toBe('No description yet.');
-      expect(
-        fixture.debugElement.query(By.css('.task-detail-panel__description'))
-      ).toBeNull();
-    });
-
-    it('renders the empty-state when content is whitespace-only', () => {
-      fixture.componentRef.setInput('task', makeTask({ content: '   \n  ' }));
-      fixture.detectChanges();
-
-      const empty = fixture.debugElement.query(
-        By.css('.task-detail-panel__description-empty')
-      );
-      expect(empty).toBeTruthy();
-      expect(
-        fixture.debugElement.query(By.css('.task-detail-panel__description'))
-      ).toBeNull();
-    });
-
-    it('no longer renders the placeholder badge', () => {
-      expect(
-        fixture.debugElement.query(By.css('.task-detail-panel__placeholder-badge'))
-      ).toBeNull();
-    });
-
-    it('updates the rendered description when the task input changes', () => {
-      fixture.componentRef.setInput('task', makeTask({ id: 't-A', content: 'task A prose' }));
-      fixture.detectChanges();
-
-      let desc = fixture.debugElement.query(
-        By.css('.task-detail-panel__description')
-      );
-      expect(desc.nativeElement.textContent.trim()).toBe('task A prose');
-
-      fixture.componentRef.setInput('task', makeTask({ id: 't-B', content: null }));
-      fixture.detectChanges();
-
-      expect(
-        fixture.debugElement.query(By.css('.task-detail-panel__description'))
-      ).toBeNull();
-      const empty = fixture.debugElement.query(
-        By.css('.task-detail-panel__description-empty')
-      );
-      expect(empty).toBeTruthy();
-      expect(empty.nativeElement.textContent.trim()).toBe('No description yet.');
-    });
-
-    it('wires the Description section heading id to aria-labelledby on the section', () => {
-      fixture.componentRef.setInput('task', makeTask({ id: 't-1', content: 'x' }));
-      fixture.detectChanges();
-
-      const heading = fixture.debugElement.query(
-        By.css('.task-detail-panel__description')
-      ).nativeElement.closest('section') as HTMLElement;
-      const headingEl = heading.querySelector(
-        '.task-detail-panel__section-label'
-      ) as HTMLElement;
-      expect(headingEl.id).toBe('task-detail-description-t-1');
-      expect(heading.getAttribute('aria-labelledby')).toBe(
-        'task-detail-description-t-1'
-      );
+    it('re-emits taskNotFound from the description child up the outputs', () => {
+      const emitted: number[] = [];
+      component.taskNotFound.subscribe(() => emitted.push(1));
+      component.handleTaskNotFound();
+      expect(emitted.length).toBe(1);
     });
   });
 

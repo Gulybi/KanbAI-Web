@@ -145,44 +145,6 @@
   margin: 0;
 }
 
-// ---- Description section -------------------------------------------------
-// Renders BoardTask.content as plain text with preserved line breaks, or a
-// muted empty-state when content is null / '' / whitespace-only. No motion,
-// no interactive controls — Phase 1 is read-only.
-
-.task-detail-panel__description {
-  margin: 0;
-
-  font-size: $font-size-md;
-  font-weight: $font-weight-regular;
-  line-height: $line-height-normal;
-  color: $text-primary;
-
-  // Preserve line breaks embedded in the raw string without parsing markdown
-  // or injecting <br>. Tech-spec requirement (§Implementation Step 4).
-  white-space: pre-wrap;
-
-  // Guarantee a pathologically long single token (e.g. a 500-char URL with no
-  // spaces) breaks mid-token rather than pushing the drawer body into
-  // horizontal scroll. Tech-spec requirement.
-  overflow-wrap: anywhere;
-  word-break: normal; // explicit: do not also break Latin words at every char
-}
-
-.task-detail-panel__description-empty {
-  margin: 0;
-
-  font-size: $font-size-md;
-  font-weight: $font-weight-regular;
-  line-height: $line-height-normal;
-  color: $text-secondary;
-
-  // No italic, no "click to add" prompt — Phase 1 is informational only.
-  // Tone is carried by the copy ("No description yet.") and the muted
-  // colour, not by typographic ornament.
-  font-style: normal;
-}
-
 // ---- Attachment section --------------------------------------------------
 // Container for the dropzone + upload rows. Tighter vertical rhythm than
 // the section default so the progress row reads as a continuation of the

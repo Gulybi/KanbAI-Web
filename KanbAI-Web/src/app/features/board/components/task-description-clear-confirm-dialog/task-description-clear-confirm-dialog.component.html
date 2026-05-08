@@ -1,0 +1,18 @@
+<h2
+  id="task-description-clear-heading"
+  class="task-description-clear-confirm__heading"
+>{{ copy.CLEAR_CONFIRM_TITLE }}</h2>
+
+<div class="task-description-clear-confirm__actions">
+  <button
+    type="button"
+    class="task-description-clear-confirm__cancel"
+    (click)="onCancel()"
+  >{{ copy.CLEAR_CONFIRM_CANCEL_LABEL }}</button>
+
+  <button
+    type="button"
+    class="task-description-clear-confirm__confirm"
+    (click)="onConfirm()"
+  >{{ copy.CLEAR_CONFIRM_CONFIRM_LABEL }}</button>
+</div>

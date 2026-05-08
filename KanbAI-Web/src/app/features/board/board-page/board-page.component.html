@@ -156,6 +156,14 @@
       [task]="task"
       (panelClosed)="handleTaskDetailClosed()"
       (fileSelected)="handleAttachmentSelected($event)"
+      (taskNotFound)="handleTaskNotFound()"
+    />
+  }
+
+  @if (taskNotFoundToast(); as toast) {
+    <app-task-not-found-toast
+      [message]="toast.message"
+      (dismiss)="dismissTaskNotFoundToast()"
     />
   }
 </div>

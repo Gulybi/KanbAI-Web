@@ -11,18 +11,10 @@ import {
 } from '@angular/core';
 
 import { BoardTask } from '../../state/board-state.model';
-
-/**
- * Presentational projection of BoardTask.content for the Description
- * section. `empty` = render the empty-state copy; `text` = render
- * `text` with preserved line breaks.
- */
-type TaskDescriptionDisplay =
-  | { readonly mode: 'empty'; readonly text: '' }
-  | { readonly mode: 'text'; readonly text: string };
 import { FileDropzoneComponent } from '../../../attachments/components/file-dropzone/file-dropzone.component';
 import { UploadProgressRowComponent } from '../../../attachments/components/upload-progress-row/upload-progress-row.component';
 import { AttachmentListComponent } from '../../../attachments/components/attachment-list/attachment-list.component';
+import { TaskDescriptionSectionComponent } from '../task-description-section/task-description-section.component';
 import { AttachmentsStateService } from '../../../attachments/state/attachments-state.service';
 import { UPLOAD_BLOCKED_REASON } from '../../../attachments/constants/upload-errors';
 import type { DropzoneFileSelectedEvent } from '../../../attachments/models/dropzone.model';
@@ -45,7 +37,8 @@ import {
   imports: [
     FileDropzoneComponent,
     UploadProgressRowComponent,
-    AttachmentListComponent
+    AttachmentListComponent,
+    TaskDescriptionSectionComponent
   ],
   templateUrl: './task-detail-panel.component.html',
   styleUrl: './task-detail-panel.component.scss',
@@ -60,26 +53,10 @@ export class TaskDetailPanelComponent {
 
   readonly panelClosed = output<void>();
   readonly fileSelected = output<DropzoneFileSelectedEvent>();
+  /** Re-emitted from the Description section when save/clear returns 404. */
+  readonly taskNotFound = output<void>();
 
   readonly titleId = computed(() => `task-detail-title-${this.task().id}`);
-
-  /** Stable per-task id for the Description section heading (mirrors `titleId`). */
-  readonly descriptionLabelId = computed(
-    () => `task-detail-description-${this.task().id}`
-  );
-
-  /**
-   * Presentational projection of `task().content`. Null, empty-string, and
-   * whitespace-only values all collapse to the `empty` mode so the template
-   * can render the empty-state copy without re-implementing the rule.
-   */
-  readonly descriptionDisplay: Signal<TaskDescriptionDisplay> = computed(() => {
-    const raw = this.task().content;
-    if (raw === null || raw === '' || raw.trim() === '') {
-      return { mode: 'empty', text: '' };
-    }
-    return { mode: 'text', text: raw };
-  });
 
   /** All in-flight upload rows for the currently-open task. */
   readonly uploads: Signal<AttachmentUpload[]> = computed<AttachmentUpload[]>(
@@ -201,6 +178,11 @@ export class TaskDetailPanelComponent {
 
   handleRetryListFetch(): void {
     this.attachmentsState.hydrateCompletedForTask(this.task().id);
+  }
+
+  /** Re-emits the child's 404 signal up to the board page. */
+  handleTaskNotFound(): void {
+    this.taskNotFound.emit();
   }
 
   trackUploadById(_index: number, upload: AttachmentUpload): string {
