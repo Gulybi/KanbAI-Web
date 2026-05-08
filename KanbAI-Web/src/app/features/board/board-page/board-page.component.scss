@@ -414,6 +414,144 @@
   }
 }
 
+// ---- Task-load error strip (persistent, blocking) ----------------------
+// Placement justification: tasks are the board's primary content, so
+// when the task GET fails after columns succeed the user is stuck — the
+// strip stays pinned to the top of the column area until a successful
+// retry clears it. Unlike .board-page__move-error (a non-blocking,
+// user-dismissable rollback notice), this strip is the ONLY path back
+// to a populated board, so no dismiss affordance is provided; the Retry
+// button is the only outbound action.
+//
+// Mirrors the move-error surface (border + accent + shadow + radius)
+// for visual continuity, but swaps the ghost Dismiss button for a
+// primary $brand-primary Retry button — matching the empty-add CTA
+// so "here is the primary action" reads consistently across the
+// board's recovery surfaces.
+.board-page__task-load-error {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+
+  margin: 0 $content-padding;
+  margin-top: $space-md;
+
+  display: flex;
+  align-items: center;
+  gap: $space-sm;
+
+  padding: $space-sm $space-md;
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-left: 4px solid $status-high;
+  border-radius: $radius-md;
+  box-shadow: $shadow-dropdown;
+
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  // Enter animation — matches move-error strip for visual continuity.
+  // Global prefers-reduced-motion rule in _motion.scss clamps this to
+  // 0.01ms, so reduced-motion users still see the strip appear but
+  // without the slide.
+  animation: board-task-load-error-in $motion-base both;
+
+  // Mobile: the strip stacks its contents vertically so the Retry button
+  // can go full-width and satisfy the 44px touch-target rule without
+  // horizontal crowding next to the error copy.
+  @media (max-width: #{$bp-md - 1px}) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: $space-xs;
+    margin: $space-md $space-md 0;
+  }
+}
+
+.board-page__task-load-error-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: $status-high;
+
+  // Mobile: icon aligns with the text baseline when the strip stacks.
+  @media (max-width: #{$bp-md - 1px}) {
+    align-self: flex-start;
+  }
+}
+
+.board-page__task-load-error-text {
+  flex: 1 1 auto;
+}
+
+// Retry button — primary affordance. Same visual contract as the
+// .board-page__empty-add CTA, sized down to match the strip's compact
+// scale (min-height 32px on desktop, 44px on coarse pointers or mobile
+// for touch-target compliance).
+.board-page__task-load-error-retry {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: $space-xxs $space-md;
+
+  background: $brand-primary;
+  color: $text-inverse;
+  border: 1px solid $brand-primary;
+  border-radius: $radius-md;
+
+  font-family: $font-family-base;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-tight;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    border-color     $motion-fast,
+    transform        $motion-fast;
+
+  &:hover:not(:disabled) {
+    background: $brand-primary-hover;
+    border-color: $brand-primary-hover;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    background: $brand-primary-light;
+    border-color: $brand-primary-light;
+    color: $text-tertiary;
+    cursor: not-allowed;
+  }
+
+  // Touch targets ≥44px per KanbAI UX pattern #8.
+  @media (pointer: coarse) {
+    min-height: 44px;
+  }
+
+  // Mobile: full-width under stacked strip layout.
+  @media (max-width: #{$bp-md - 1px}) {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@keyframes board-task-load-error-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
 // ---- Reduced-motion fallback --------------------------------------------
 // Global _motion.scss already clamps transitions/animations to 0.01ms;
 // no per-component override needed. Instant state change still fires.

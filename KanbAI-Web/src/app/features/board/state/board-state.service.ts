@@ -9,7 +9,8 @@ import {
   ColumnDeletedEvent,
   REALTIME_EVENT,
   TaskCreatedEvent,
-  TaskMovedEvent
+  TaskMovedEvent,
+  TaskUpdatedEvent
 } from '../../../core/models/realtime-events';
 import {
   BoardColumn,
@@ -86,6 +87,11 @@ export class BoardStateService extends BaseStateService<BoardState> {
         this.signalRService
           .on<TaskMovedEvent>(REALTIME_EVENT.TaskMoved)
           .subscribe(evt => this.onTaskMoved(evt))
+      );
+      this.subscriptionBag.push(
+        this.signalRService
+          .on<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated)
+          .subscribe(evt => this.onTaskUpdated(evt))
       );
 
       // If a board session straddled a reconnect, the server-side group
@@ -295,6 +301,57 @@ export class BoardStateService extends BaseStateService<BoardState> {
     });
   }
 
+  /**
+   * SignalR handler for `TaskUpdated` — fires on description edit/clear
+   * (issue #85). Reconciles by `id` with `content` as the source of truth
+   * (nullable after a clear, per backend_api_map.md:176). Silently no-ops
+   * if the task is not in local state — hydration is the authoritative
+   * insertion path and a pre-hydration `TaskUpdated` for an unknown id is
+   * a race that resolves itself when the GET lands.
+   *
+   * If `evt.columnId` differs from the task's current bucket (the backend
+   * emits `TaskUpdated` only on description mutations, so this is not
+   * expected), the handler trusts `evt.columnId` and moves the task — same
+   * cross-bucket reconcile pattern as `reconcileServerTaskMove`.
+   */
+  private onTaskUpdated(evt: TaskUpdatedEvent): void {
+    if (!evt || this.getState().currentProjectId === null) {
+      return;
+    }
+    const buckets = this.getState().tasksByColumnId;
+    const ownerEntry = Object.entries(buckets).find(([, bucket]) =>
+      bucket.some(t => t.id === evt.id)
+    );
+    if (!ownerEntry) {
+      return;
+    }
+    const [ownerColumnId, ownerBucket] = ownerEntry;
+    const reconciled: BoardTask = {
+      id: evt.id,
+      title: evt.title,
+      content: evt.content,
+      taskOrder: evt.taskOrder,
+      columnId: evt.columnId,
+      assignedId: evt.assignedId
+    };
+    const nextBuckets: Record<string, BoardTask[]> = { ...buckets };
+    if (ownerColumnId === evt.columnId) {
+      nextBuckets[ownerColumnId] = ownerBucket
+        .map(t => (t.id === evt.id ? reconciled : t))
+        .sort((a, b) => a.taskOrder - b.taskOrder);
+    } else {
+      // Cross-bucket reconcile (defensive — not expected on description-only updates).
+      nextBuckets[ownerColumnId] = ownerBucket.filter(t => t.id !== evt.id);
+      const destBucket = (nextBuckets[evt.columnId] ?? []).filter(
+        t => t.id !== evt.id
+      );
+      nextBuckets[evt.columnId] = [...destBucket, reconciled].sort(
+        (a, b) => a.taskOrder - b.taskOrder
+      );
+    }
+    this.setState({ tasksByColumnId: nextBuckets });
+  }
+
   // ------------------- HTTP-driven mutations (issue #47) -------------------
 
   /**
@@ -384,6 +441,64 @@ export class BoardStateService extends BaseStateService<BoardState> {
       }
     }
     this.setState({ columns: sortedColumns, tasksByColumnId: nextBuckets });
+  }
+
+  /**
+   * Replace the task buckets for the current board. Called by
+   * `BoardPageComponent` after the initial `GET /api/task/project/{projectId}`.
+   *
+   * Idempotent w.r.t. concurrency: if the active project has already changed
+   * (stale hydration — user navigated A → B while A's request was in flight),
+   * the call is a silent no-op. Mirrors the project-id guard on `setColumns`.
+   *
+   * Orphan filter: any task whose `columnId` is not in the current
+   * `columns()` set is dropped. Mirrors the allowed-ids filter on
+   * `setColumns`; defends against `ColumnDeleted` arriving between the
+   * column fetch and the task fetch.
+   *
+   * Atomic replace: `tasksByColumnId` is replaced, NOT merged. This is
+   * intentional — `setTasks` is authoritative for initial state, and any
+   * pre-existing bucket content (e.g. a `TaskCreated` SignalR event that
+   * raced the hydration) is overwritten. The SignalR path will either
+   * re-deliver the missed event or the hydration payload already contained
+   * it (the backend ticket guarantees both `TaskCreated` echo and the GET
+   * response agree on persisted state).
+   *
+   * Projection to `BoardTask`: drops `createdAt`/`updatedAt` per the same
+   * reasoning as `applyCreatedTask` — the board UI does not need timestamps
+   * and keeping them leaks irrelevant backend fields into local state.
+   */
+  setTasks(projectId: string, tasks: TaskResponseDto[]): void {
+    if (this.getState().currentProjectId !== projectId) {
+      return;
+    }
+    const allowedColumnIds = new Set(
+      this.getState().columns.map(c => c.id)
+    );
+    const nextBuckets: Record<string, BoardTask[]> = {};
+    for (const dto of tasks) {
+      if (!allowedColumnIds.has(dto.columnId)) {
+        continue;
+      }
+      const projected: BoardTask = {
+        id: dto.id,
+        title: dto.title,
+        content: dto.content,
+        taskOrder: dto.taskOrder,
+        columnId: dto.columnId,
+        assignedId: dto.assignedId
+      };
+      const bucket = nextBuckets[dto.columnId];
+      if (bucket) {
+        bucket.push(projected);
+      } else {
+        nextBuckets[dto.columnId] = [projected];
+      }
+    }
+    for (const key of Object.keys(nextBuckets)) {
+      nextBuckets[key].sort((a, b) => a.taskOrder - b.taskOrder);
+    }
+    this.setState({ tasksByColumnId: nextBuckets });
   }
 
   /**

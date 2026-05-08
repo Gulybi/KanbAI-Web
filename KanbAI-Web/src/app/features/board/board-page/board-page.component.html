@@ -79,6 +79,35 @@
       </div>
     </div>
   } @else {
+    @if (taskLoadError()) {
+      <div
+        class="board-page__task-load-error"
+        role="alert"
+      >
+        <svg
+          class="board-page__task-load-error-icon"
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M8 1.333 14.667 12.8H1.333L8 1.333Zm0 4.8v3.2h.667v-3.2H8Zm-.333 4.534v.666h1v-.666h-1Z" />
+        </svg>
+        <span class="board-page__task-load-error-text">{{ taskLoadError() }}</span>
+        <button
+          type="button"
+          class="board-page__task-load-error-retry"
+          [disabled]="isLoadingTasks()"
+          (click)="retryLoadTasks()"
+        >
+          Retry
+        </button>
+      </div>
+    }
+
     <div class="board-page__columns" cdkDropListGroup>
       @for (column of columns(); track column.id) {
         <app-board-column

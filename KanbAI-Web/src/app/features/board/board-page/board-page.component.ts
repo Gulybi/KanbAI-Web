@@ -25,6 +25,7 @@ import {
 import {
   TasksApiService,
   mapTaskCreateErrorToUserMessage,
+  mapTaskListErrorToUserMessage,
   mapTaskMoveErrorToUserMessage
 } from '../services/tasks-api.service';
 import { ColumnResponseDto, CreateColumnDto } from '../models/column.model';
@@ -106,6 +107,18 @@ export class BoardPageComponent implements OnInit, OnDestroy {
    * `MOVE_ERROR_AUTO_DISMISS_MS`.
    */
   readonly moveError = signal<string | null>(null);
+
+  /**
+   * Inline error strip copy for a failed task-read (issue #87). Set by
+   * `loadTasks` on error; cleared on a successful Retry or on destroy.
+   * Explicitly NOT auto-dismissed — the board is unusable without tasks,
+   * so the user must retry or navigate away. Do not copy the auto-dismiss
+   * pattern from `moveError`.
+   */
+  readonly taskLoadError = signal<string | null>(null);
+
+  /** True while `loadTasks` is in flight. Disables the Retry button. */
+  readonly isLoadingTasks = signal<boolean>(false);
 
   /**
    * Id of the task to shake after a rejected move, paired with an
@@ -481,11 +494,73 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         next: dtos => {
           const mapped = this.projectColumnDtos(dtos);
           this.boardState.setColumns(projectId, mapped);
+          // Only issue the task-read if the column load succeeded AND we're
+          // still on the same project. The stale-id guard inside setTasks is
+          // a second line of defence, but avoiding the HTTP call at all on
+          // stale navigation is cheaper.
+          if (this.boardState.currentProjectId() === projectId) {
+            this.loadTasks(projectId);
+          }
         },
         error: err => {
           this.columnLoadError.set(mapColumnErrorToUserMessage(err, 'list'));
+          // Do NOT issue loadTasks — the full-board columnLoadError panel is
+          // already rendering in place of the columns UI, so tasks are moot.
         }
       });
+  }
+
+  /**
+   * HTTP read for the project's tasks. Invoked on `ngOnInit` after
+   * `loadColumns` resolves (so `setTasks`'s allowed-ids filter has columns
+   * to filter against) and on `retryLoadTasks`. The stale-project guard
+   * inside `setTasks` makes it safe to interleave with user navigation.
+   *
+   * Success path announces hydration via `dragAnnouncement` (reusing the
+   * existing polite live-region); error path populates `taskLoadError`
+   * with mapped copy.
+   */
+  private loadTasks(projectId: string): void {
+    this.isLoadingTasks.set(true);
+    this.taskLoadError.set(null);
+
+    this.tasksApi
+      .getTasksForProject(projectId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: dtos => {
+          this.boardState.setTasks(projectId, dtos);
+          this.isLoadingTasks.set(false);
+
+          // Announce only if this hydration actually landed — the stale-project
+          // guard inside `setTasks` may have no-op'd if the user navigated away.
+          if (this.boardState.currentProjectId() === projectId) {
+            const columnCount = this.columns().length;
+            const taskCount = Object.values(this.tasksByColumnId()).reduce(
+              (sum, bucket) => sum + bucket.length,
+              0
+            );
+            if (taskCount > 0) {
+              this.announce(
+                `Board loaded with ${taskCount} tasks across ${columnCount} columns.`
+              );
+            }
+          }
+        },
+        error: err => {
+          this.isLoadingTasks.set(false);
+          this.taskLoadError.set(mapTaskListErrorToUserMessage(err));
+        }
+      });
+  }
+
+  /** Retry handler for the inline task-load error strip. */
+  retryLoadTasks(): void {
+    const projectId = this.boardState.currentProjectId();
+    if (projectId === null || this.isLoadingTasks()) {
+      return;
+    }
+    this.loadTasks(projectId);
   }
 
   private projectColumnDtos(dtos: ColumnResponseDto[]): BoardColumn[] {

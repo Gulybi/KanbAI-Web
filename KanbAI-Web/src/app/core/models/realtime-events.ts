@@ -21,7 +21,8 @@ export const REALTIME_EVENT = {
   ColumnCreated: 'ColumnCreated',
   ColumnDeleted: 'ColumnDeleted',
   TaskCreated: 'TaskCreated',
-  TaskMoved: 'TaskMoved'
+  TaskMoved: 'TaskMoved',
+  TaskUpdated: 'TaskUpdated'
 } as const;
 
 export type RealtimeEventName = typeof REALTIME_EVENT[keyof typeof REALTIME_EVENT];
@@ -120,4 +121,29 @@ export interface TaskMovedEvent {
   newTaskOrder: number;
   /** Full post-move `TaskResponseDto`. */
   task: TaskCreatedEvent;
+}
+
+/**
+ * Payload of `TaskUpdated`, emitted by
+ * `PUT /api/task/{taskId}/description` and
+ * `DELETE /api/task/{taskId}/description` (per backend_api_map.md:165).
+ *
+ * Structurally identical to `TaskCreatedEvent` — the backend broadcasts
+ * the same `TaskResponseDto` shape. Kept as a distinct interface so the
+ * typed `on<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated)` subscription
+ * reads cleanly and can diverge later (e.g. if the backend adds a
+ * `previousContent` field).
+ *
+ * ⚠ BACKEND CAVEAT (same as TaskCreatedEvent): no `projectId` on the wire;
+ * attribution via `BoardStateService.currentProjectId` + group membership.
+ */
+export interface TaskUpdatedEvent {
+  id: string;
+  title: string;
+  content: string | null;
+  taskOrder: number;
+  columnId: string;
+  assignedId: string | null;
+  createdAt: string; // ISO-8601
+  updatedAt: string; // ISO-8601
 }

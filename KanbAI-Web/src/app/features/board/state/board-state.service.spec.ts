@@ -15,7 +15,8 @@ import {
   ColumnDeletedEvent,
   REALTIME_EVENT,
   TaskCreatedEvent,
-  TaskMovedEvent
+  TaskMovedEvent,
+  TaskUpdatedEvent
 } from '../../../core/models/realtime-events';
 import { BoardColumn } from './board-state.model';
 import { TaskResponseDto } from '../models/task.model';
@@ -592,6 +593,7 @@ describe('BoardStateService', () => {
           signalRMock.emit(REALTIME_EVENT.ColumnDeleted, payload as ColumnDeletedEvent);
           signalRMock.emit(REALTIME_EVENT.TaskCreated, payload as TaskCreatedEvent);
           signalRMock.emit(REALTIME_EVENT.TaskMoved, payload as TaskMovedEvent);
+          signalRMock.emit(REALTIME_EVENT.TaskUpdated, payload as TaskUpdatedEvent);
         }
       }).not.toThrow();
     });
@@ -676,6 +678,285 @@ describe('BoardStateService', () => {
       const buckets = service.tasksByColumnId();
       expect(buckets['col-keep']?.map(t => t.id)).toEqual(['t-keep']);
       expect(buckets['col-drop']).toBeUndefined();
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #87 — hydrate tasks on board entry
+  // ----------------------------------------------------------------------
+
+  describe('setTasks() (issue #87)', () => {
+    const makeTaskDto = (partial?: Partial<TaskResponseDto>): TaskResponseDto => ({
+      id: 't-1',
+      title: 'Task 1',
+      content: null,
+      taskOrder: 0,
+      columnId: 'col-1',
+      assignedId: null,
+      createdAt: '2026-05-04T00:00:00Z',
+      updatedAt: '2026-05-04T00:00:00Z',
+      ...partial
+    });
+
+    const seedProjectAndColumns = (columnIds: string[] = ['col-1', 'col-2']) => {
+      service.enterBoard(PROJECT_ID);
+      columnIds.forEach((id, index) => {
+        signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+          id,
+          name: id,
+          colorCode: null,
+          columnOrder: index + 1,
+          projectId: PROJECT_ID,
+          createdAt: '',
+          updatedAt: ''
+        });
+      });
+    };
+
+    it('is a silent no-op when projectId does not match currentProjectId (stale response)', () => {
+      seedProjectAndColumns();
+      service.setTasks(OTHER_PROJECT_ID, [makeTaskDto()]);
+      expect(service.tasksByColumnId()).toEqual({});
+    });
+
+    it('drops tasks whose columnId is not in the current column set', () => {
+      seedProjectAndColumns(['col-1']);
+      service.setTasks(PROJECT_ID, [
+        makeTaskDto({ id: 't-keep', columnId: 'col-1' }),
+        makeTaskDto({ id: 't-orphan', columnId: 'col-missing' })
+      ]);
+      const buckets = service.tasksByColumnId();
+      expect(buckets['col-1']?.map(t => t.id)).toEqual(['t-keep']);
+      expect(buckets['col-missing']).toBeUndefined();
+    });
+
+    it('buckets tasks by columnId across multiple columns', () => {
+      seedProjectAndColumns(['col-1', 'col-2']);
+      service.setTasks(PROJECT_ID, [
+        makeTaskDto({ id: 't-a', columnId: 'col-1', taskOrder: 0 }),
+        makeTaskDto({ id: 't-b', columnId: 'col-2', taskOrder: 0 }),
+        makeTaskDto({ id: 't-c', columnId: 'col-1', taskOrder: 1 })
+      ]);
+      const buckets = service.tasksByColumnId();
+      expect(buckets['col-1'].map(t => t.id)).toEqual(['t-a', 't-c']);
+      expect(buckets['col-2'].map(t => t.id)).toEqual(['t-b']);
+    });
+
+    it('sorts each bucket by taskOrder ascending', () => {
+      seedProjectAndColumns(['col-1']);
+      service.setTasks(PROJECT_ID, [
+        makeTaskDto({ id: 't-c', columnId: 'col-1', taskOrder: 2 }),
+        makeTaskDto({ id: 't-a', columnId: 'col-1', taskOrder: 0 }),
+        makeTaskDto({ id: 't-b', columnId: 'col-1', taskOrder: 1 })
+      ]);
+      expect(service.tasksByColumnId()['col-1'].map(t => t.id)).toEqual([
+        't-a',
+        't-b',
+        't-c'
+      ]);
+    });
+
+    it('drops createdAt / updatedAt from the projected BoardTask', () => {
+      seedProjectAndColumns(['col-1']);
+      service.setTasks(PROJECT_ID, [makeTaskDto({ id: 't-proj', columnId: 'col-1' })]);
+      const stored = service.tasksByColumnId()['col-1'][0];
+      expect(stored).toEqual({
+        id: 't-proj',
+        title: 'Task 1',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null
+      });
+      expect(stored as unknown as { createdAt?: string }).not.toHaveProperty('createdAt');
+      expect(stored as unknown as { updatedAt?: string }).not.toHaveProperty('updatedAt');
+    });
+
+    it('replaces pre-existing buckets atomically (no merge with prior state)', () => {
+      seedProjectAndColumns(['col-1']);
+      // Seed a pre-existing task via SignalR — the hydration should overwrite it.
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-stale',
+        title: 'stale',
+        content: null,
+        taskOrder: 9,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()['col-1']?.map(t => t.id)).toEqual(['t-stale']);
+
+      service.setTasks(PROJECT_ID, [
+        makeTaskDto({ id: 't-fresh', columnId: 'col-1', taskOrder: 0 })
+      ]);
+
+      // 't-stale' is gone — hydration replaced the bucket.
+      expect(service.tasksByColumnId()['col-1']?.map(t => t.id)).toEqual(['t-fresh']);
+    });
+
+    it('TaskCreated dedupe after hydration — AC7 — existing id is not double-rendered', () => {
+      seedProjectAndColumns(['col-1']);
+      service.setTasks(PROJECT_ID, [
+        makeTaskDto({ id: 't-X', columnId: 'col-1', taskOrder: 0 })
+      ]);
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-X',
+        title: 'echo',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      const bucket = service.tasksByColumnId()['col-1'];
+      expect(bucket.length).toBe(1);
+      expect(bucket[0].id).toBe('t-X');
+    });
+
+    it('TaskMoved pre-hydration is a no-op; subsequent setTasks plants the task at its post-move position — AC8', () => {
+      seedProjectAndColumns(['col-1', 'col-2']);
+      // TaskMoved arrives for an unknown id — silent no-op.
+      signalRMock.emit<TaskMovedEvent>(REALTIME_EVENT.TaskMoved, {
+        taskId: 't-pre',
+        oldColumnId: 'col-1',
+        newColumnId: 'col-2',
+        oldTaskOrder: 0,
+        newTaskOrder: 0,
+        task: {
+          id: 't-pre',
+          title: 'pre',
+          content: null,
+          taskOrder: 0,
+          columnId: 'col-2',
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        }
+      });
+      expect(service.tasksByColumnId()).toEqual({});
+
+      // Hydration plants the task at its post-move column/position.
+      service.setTasks(PROJECT_ID, [
+        makeTaskDto({ id: 't-pre', columnId: 'col-2', taskOrder: 0 })
+      ]);
+      expect(service.tasksByColumnId()['col-2']?.map(t => t.id)).toEqual(['t-pre']);
+    });
+  });
+
+  describe('onTaskUpdated handler (issue #87)', () => {
+    const seed = () => {
+      service.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-1',
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-2',
+        name: 'Doing',
+        colorCode: null,
+        columnOrder: 2,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-1',
+        title: 'Original',
+        content: 'old content',
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+    };
+
+    it('updates content on a task present in state (AC9)', () => {
+      seed();
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-1',
+        title: 'Original',
+        content: 'new content',
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()['col-1'][0].content).toBe('new content');
+    });
+
+    it('preserves null content (description cleared)', () => {
+      seed();
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-1',
+        title: 'Original',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()['col-1'][0].content).toBeNull();
+    });
+
+    it('is a silent no-op when the task is not in state', () => {
+      seed();
+      const before = service.tasksByColumnId();
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-unknown',
+        title: 'T',
+        content: 'x',
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()).toEqual(before);
+    });
+
+    it('is a silent no-op when currentProjectId is null', () => {
+      service.leaveBoard();
+      expect(() => {
+        signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+          id: 't-1',
+          title: 'T',
+          content: 'x',
+          taskOrder: 0,
+          columnId: 'col-1',
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }).not.toThrow();
+      expect(service.tasksByColumnId()).toEqual({});
+    });
+
+    it('moves the task across buckets if evt.columnId differs (defensive cross-bucket reconcile)', () => {
+      seed();
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-1',
+        title: 'Original',
+        content: 'new content',
+        taskOrder: 0,
+        columnId: 'col-2',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      const buckets = service.tasksByColumnId();
+      expect(buckets['col-1']?.map(t => t.id)).toEqual([]);
+      expect(buckets['col-2']?.map(t => t.id)).toEqual(['t-1']);
+      expect(buckets['col-2'][0].content).toBe('new content');
     });
   });
 
