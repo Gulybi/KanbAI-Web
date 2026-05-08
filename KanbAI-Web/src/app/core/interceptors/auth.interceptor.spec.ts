@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { vi } from 'vitest';
 import { authInterceptor } from './auth.interceptor';
 import { AuthService } from '../services/AuthService';
+import { AuthStateService } from '../services/auth-state.service';
 import { environment } from '../../../environments/environment';
 
 describe('authInterceptor', () => {
@@ -37,8 +38,16 @@ describe('authInterceptor', () => {
     }
   });
 
+  // Module-level flags so the AuthService.logout stub can flip the
+  // AuthStateService.isAuthenticated() result, which is how the
+  // interceptor's idempotency guard collapses concurrent 401s.
+  let authed = true;
+  let routerUrl = '/dashboard';
+
   beforeEach(() => {
     localStorage.clear();
+    authed = true;
+    routerUrl = '/dashboard';
 
     TestBed.configureTestingModule({
       providers: [
@@ -47,10 +56,33 @@ describe('authInterceptor', () => {
         // The interceptor redirects to '/login' on 401 by calling
         // `router.navigate(['/login'])`. Without a stub, the default
         // router rejects with NG04002 ("Cannot match any routes") because
-        // no routes are registered in this test bed.
-        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // no routes are registered in this test bed. `url` is read by the
+        // on-login-page guard — expose it as a getter so per-test mutation
+        // of `routerUrl` is observed by the interceptor.
+        {
+          provide: Router,
+          useValue: {
+            navigate: vi.fn().mockResolvedValue(true),
+            get url() { return routerUrl; }
+          }
+        },
         // The interceptor calls `authService.logout()` on non-exempt 401s.
-        { provide: AuthService, useValue: { logout: vi.fn() } }
+        // The mock flips `authed` so subsequent 401s in the same test short-
+        // circuit through the `isAuthenticated()` guard.
+        {
+          provide: AuthService,
+          useValue: { logout: vi.fn(() => { authed = false; }) }
+        },
+        // The interceptor reads `authStateService.isAuthenticated()` as the
+        // idempotency guard. The getter form lets the AuthService.logout
+        // mock's flip of `authed` be visible on the next invocation.
+        {
+          provide: AuthStateService,
+          useValue: {
+            isAuthenticated: () => authed,
+            clearAuthState: vi.fn(() => { authed = false; })
+          }
+        }
       ]
     });
 
@@ -423,7 +455,7 @@ describe('authInterceptor', () => {
       expect(router.navigate).toHaveBeenCalledWith(['/login']);
     });
 
-    it('does NOT call logout or navigate on a 401 from a non-auth endpoint when a JWT is still stored', () => {
+    it('calls logout and navigates to /login on a 401 from a non-auth endpoint when a JWT is stored', () => {
       const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
       const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
 
@@ -443,8 +475,8 @@ describe('authInterceptor', () => {
       req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
 
       expect(caughtStatus).toBe(401);
-      expect(authService.logout).not.toHaveBeenCalled();
-      expect(router.navigate).not.toHaveBeenCalled();
+      expect(authService.logout).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledWith(['/login']);
     });
 
     it('does NOT call logout or navigate on a 403 from a non-auth endpoint', () => {
@@ -471,7 +503,7 @@ describe('authInterceptor', () => {
       expect(router.navigate).not.toHaveBeenCalled();
     });
 
-    it('does NOT call logout or navigate on a 401 from POST /project/:id/members when a JWT is stored', () => {
+    it('calls logout and navigates to /login on a 401 from POST /project/:id/members when a JWT is stored', () => {
       const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
       const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
 
@@ -493,6 +525,98 @@ describe('authInterceptor', () => {
       req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
 
       expect(caughtStatus).toBe(401);
+      expect(authService.logout).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    it('calls logout and navigates to /login on a 401 with body "Invalid or missing user ID in token." (AC5)', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      localStorage.setItem('jwt_token', 'x.y.z');
+
+      let caughtStatus: number | undefined;
+      httpClient.get(`${environment.apiUrl}/project`).subscribe({
+        next: () => {
+          throw new Error('should have failed with 401');
+        },
+        error: (error) => {
+          caughtStatus = error.status;
+        }
+      });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/project`);
+      // Body mirrors `.claude/backend_api_map.md:67` malformed-claim flavour.
+      req.flush(
+        { success: false, message: 'Invalid or missing user ID in token.' },
+        { status: 401, statusText: 'Unauthorized' }
+      );
+
+      expect(caughtStatus).toBe(401);
+      expect(authService.logout).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    it('calls logout but does NOT navigate when router is already on /login', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      routerUrl = '/login';
+      localStorage.setItem('jwt_token', 'x.y.z');
+
+      httpClient.get(`${environment.apiUrl}/project`).subscribe({
+        next: () => { throw new Error('should have failed with 401'); },
+        error: () => { /* swallow */ }
+      });
+
+      const req = httpTesting.expectOne(`${environment.apiUrl}/project`);
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      expect(authService.logout).toHaveBeenCalledTimes(1);
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('handles two concurrent 401s by calling logout exactly once and navigate exactly once', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      localStorage.setItem('jwt_token', 'x.y.z');
+
+      httpClient.get(`${environment.apiUrl}/project`).subscribe({
+        next: () => { throw new Error('should have failed with 401'); },
+        error: () => { /* swallow */ }
+      });
+      httpClient.get(`${environment.apiUrl}/project/proj-1/members`).subscribe({
+        next: () => { throw new Error('should have failed with 401'); },
+        error: () => { /* swallow */ }
+      });
+
+      const firstReq = httpTesting.expectOne(`${environment.apiUrl}/project`);
+      const secondReq = httpTesting.expectOne(`${environment.apiUrl}/project/proj-1/members`);
+
+      firstReq.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+      secondReq.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      expect(authService.logout).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    it('does NOT call logout or navigate on a 401 from an external (non-API) URL', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      const authService = TestBed.inject(AuthService) as unknown as { logout: ReturnType<typeof vi.fn> };
+
+      localStorage.setItem('jwt_token', 'x.y.z');
+
+      const externalUrl = 'https://third-party.example.com/telemetry';
+      httpClient.get(externalUrl).subscribe({
+        next: () => { throw new Error('should have failed with 401'); },
+        error: () => { /* swallow */ }
+      });
+
+      const req = httpTesting.expectOne(externalUrl);
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
       expect(authService.logout).not.toHaveBeenCalled();
       expect(router.navigate).not.toHaveBeenCalled();
     });

@@ -4,18 +4,27 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, throwError } from 'rxjs';
 import { AuthService } from '../services/AuthService';
+import { AuthStateService } from '../services/auth-state.service';
+import { LOGIN_ROUTE } from '../constants/auth-routes';
 
 /**
  * Authentication Interceptor
  *
- * This interceptor will eventually:
- * 1. Attach JWT tokens to outgoing requests
- * 2. Handle 401/403 authentication errors globally
- * 3. Redirect to login on authentication failures
+ * Attaches the stored JWT to API requests and enforces a two-way 401 policy
+ * (see docs/handoffs/issue_86_tech_spec.md / #86):
+ *   1. Auth endpoints (/auth/login, /auth/register): propagate untouched so
+ *      the login/register forms surface "bad credentials" inline.
+ *   2. Any other API 401 from an authenticated session: force logout +
+ *      redirect to /login. The response body is irrelevant — status 401 is
+ *      sufficient. Idempotency is enforced by reading
+ *      `authStateService.isAuthenticated()` (concurrent 401s collapse to
+ *      one logout) and by not re-navigating when already on /login.
+ * 403 is never a session-expiry signal and is always propagated unchanged.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
   const authService = inject(AuthService);
+  const authStateService = inject(AuthStateService);
 
   // Only intercept requests to our API (not external APIs)
   if (req.url.startsWith(environment.apiUrl)) {
@@ -32,31 +41,24 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      // Three-way 401 decision (see docs/handoffs/issue_68_tech_spec.md / #68):
-      //   1. Auth endpoints (/auth/login, /auth/register): propagate untouched
-      //      so the login/register forms surface "bad credentials" inline.
-      //   2. Non-auth endpoint, JWT still stored: propagate untouched. This
-      //      is a per-resource 401 (e.g. invite-endpoint authorisation) and
-      //      the feature layer owns the inline copy. Global logout here
-      //      would unmount the feature before its error branch could run.
-      //   3. Non-auth endpoint, no JWT stored: treat as genuine session
-      //      expiry — logout and redirect to /login (AC5).
-      // 403 is never a session-expiry signal and is propagated unchanged.
+      const isApiRequest = req.url.startsWith(environment.apiUrl);
       const isAuthEndpoint =
         req.url.startsWith(`${environment.apiUrl}/auth/login`) ||
         req.url.startsWith(`${environment.apiUrl}/auth/register`);
 
-      if (error.status === 401 && !isAuthEndpoint && !hasValidToken()) {
+      if (
+        error.status === 401 &&
+        isApiRequest &&
+        !isAuthEndpoint &&
+        authStateService.isAuthenticated()
+      ) {
         authService.logout();
-        router.navigate(['/login']);
+        if (!router.url.startsWith(LOGIN_ROUTE)) {
+          router.navigate([LOGIN_ROUTE]);
+        }
       }
 
       return throwError(() => error);
     })
   );
 };
-
-function hasValidToken(): boolean {
-  const token = localStorage.getItem('jwt_token');
-  return typeof token === 'string' && token.length > 0;
-}
