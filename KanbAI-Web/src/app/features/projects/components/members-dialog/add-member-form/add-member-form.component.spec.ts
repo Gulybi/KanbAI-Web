@@ -118,4 +118,97 @@ describe('AddMemberFormComponent', () => {
     expect(label).toBeTruthy();
     expect(label?.textContent).toContain('Email');
   });
+
+  describe('submit-gating reactivity (regression: issue #89)', () => {
+    function getInput(
+      fixture: ComponentFixture<AddMemberFormComponent>
+    ): HTMLInputElement {
+      return fixture.nativeElement.querySelector(
+        'input[type="email"]'
+      ) as HTMLInputElement;
+    }
+
+    function getSubmitButton(
+      fixture: ComponentFixture<AddMemberFormComponent>
+    ): HTMLButtonElement {
+      return fixture.nativeElement.querySelector(
+        'button[type="submit"]'
+      ) as HTMLButtonElement;
+    }
+
+    function type(
+      fixture: ComponentFixture<AddMemberFormComponent>,
+      value: string
+    ): void {
+      const input = getInput(fixture);
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      fixture.detectChanges();
+    }
+
+    it('enables the submit button within one CD cycle after typing a valid email and emits on submit', async () => {
+      const fixture = await mount();
+      const input = getInput(fixture);
+      const button = getSubmitButton(fixture);
+
+      expect(input).toBeTruthy();
+      expect(button).toBeTruthy();
+      expect(button.disabled).toBe(true);
+      expect(input.value).toBe('');
+
+      type(fixture, 'alice@example.com');
+
+      expect(button.disabled).toBe(false);
+
+      let emitted: string | undefined;
+      let emissionCount = 0;
+      fixture.componentInstance.submitEmail.subscribe(v => {
+        emitted = v;
+        emissionCount += 1;
+      });
+
+      // The form uses (ngSubmit) without a parent [formGroup] directive, so
+      // no NgForm/FormGroupDirective listens for the native submit event.
+      // Invoke the listener that Angular wired up to the template binding.
+      const form = fixture.debugElement.query(By.css('form'));
+      form.triggerEventHandler('ngSubmit', {});
+      fixture.detectChanges();
+
+      expect(emitted).toBe('alice@example.com');
+      expect(emissionCount).toBe(1);
+    });
+
+    it('re-disables the submit button when the email becomes invalid', async () => {
+      const fixture = await mount();
+      const button = getSubmitButton(fixture);
+
+      type(fixture, 'alice@example.com');
+      expect(button.disabled).toBe(false);
+
+      type(fixture, 'not-an-email');
+      expect(button.disabled).toBe(true);
+
+      type(fixture, '');
+      expect(button.disabled).toBe(true);
+
+      type(fixture, '   ');
+      expect(button.disabled).toBe(true);
+    });
+
+    it('keeps the submit button disabled when parent sets disabled=true even with a valid email', async () => {
+      const fixture = await mount({ disabled: false });
+      const button = getSubmitButton(fixture);
+
+      type(fixture, 'alice@example.com');
+      expect(button.disabled).toBe(false);
+
+      fixture.componentRef.setInput('disabled', true);
+      fixture.detectChanges();
+      expect(button.disabled).toBe(true);
+
+      fixture.componentRef.setInput('disabled', false);
+      fixture.detectChanges();
+      expect(button.disabled).toBe(false);
+    });
+  });
 });

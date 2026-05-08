@@ -6,11 +6,20 @@ import {
   Input,
   OnChanges,
   Output,
+  Signal,
   SimpleChanges,
-  ViewChild
+  ViewChild,
+  computed
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  FormControl,
+  FormControlStatus,
+  ReactiveFormsModule,
+  Validators
+} from '@angular/forms';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { startWith } from 'rxjs';
 
 import { FormInputComponent } from '../../../../auth/components/form-input/form-input.component';
 import { FormButtonComponent } from '../../../../auth/components/form-button/form-button.component';
@@ -48,6 +57,15 @@ export class AddMemberFormComponent implements OnChanges {
     nonNullable: true,
     validators: [Validators.required, Validators.email, whitespaceOnlyValidator]
   });
+
+  protected readonly emailStatus: Signal<FormControlStatus> = toSignal(
+    this.emailControl.statusChanges.pipe(startWith(this.emailControl.status)),
+    { requireSync: true }
+  );
+
+  protected readonly canSubmit: Signal<boolean> = computed(
+    () => this.emailStatus() === 'VALID'
+  );
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['resetCounter'] && !changes['resetCounter'].firstChange) {
