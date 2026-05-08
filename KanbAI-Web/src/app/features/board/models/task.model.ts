@@ -45,3 +45,6 @@ export interface CreateTaskDto {
 
 /** Envelope alias for the single-DTO task-create response. */
 export type TaskCreateResponse = ApiResponse<TaskResponseDto>;
+
+/** Envelope alias for the task-list response (issue #87). */
+export type TaskListResponse = ApiResponse<TaskResponseDto[]>;

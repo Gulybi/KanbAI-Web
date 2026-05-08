@@ -7,6 +7,7 @@ import {
   CreateTaskDto,
   MoveTaskDto,
   TaskCreateResponse,
+  TaskListResponse,
   TaskMoveResponse,
   TaskResponseDto
 } from '../models/task.model';
@@ -60,6 +61,36 @@ export class TasksApiService {
       map(response => {
         if (!response.success || response.data == null) {
           throw new Error(response.errors?.[0] ?? response.message ?? 'Request failed');
+        }
+        return response.data;
+      })
+    );
+  }
+
+  /**
+   * `GET /api/task/project/{projectId}` — returns every task in the project,
+   * sorted ascending by `taskOrder` within each `columnId` (backend
+   * pre-sorted per the recommended shape). JWT attached automatically by
+   * `authInterceptor`.
+   *
+   * Envelope unwrap mirrors `ColumnsApiService.getColumnsForProject`:
+   *  - `success: false` → observable error.
+   *  - `success: true` with `data == null` → observable error (defensive;
+   *    the recommended backend shape returns `[]` for an empty project,
+   *    not `null`, but we harden for contract drift).
+   *  - `success: true` with array `data` → unwrapped `TaskResponseDto[]`.
+   *
+   * The service does NOT retry, does NOT swallow errors, does NOT translate
+   * to user copy. Callers own user-copy via {@link mapTaskListErrorToUserMessage}.
+   */
+  getTasksForProject(projectId: string): Observable<TaskResponseDto[]> {
+    const url = `${this.apiUrl}/project/${encodeURIComponent(projectId)}`;
+    return this.http.get<TaskListResponse>(url).pipe(
+      map(response => {
+        if (!response.success || response.data == null) {
+          throw new Error(
+            response.errors?.[0] ?? response.message ?? 'Request failed'
+          );
         }
         return response.data;
       })
@@ -129,4 +160,33 @@ export function mapTaskCreateErrorToUserMessage(error: unknown): string {
   }
 
   return "We couldn't add this task. Please try again.";
+}
+
+/**
+ * Operation-appropriate user copy for a failed task-list read (issue #87).
+ * Verbatim strings frozen in issue_87_context.md §"Error copy".
+ * Never exposes status codes, URLs, stack traces, or envelope error arrays.
+ */
+export function mapTaskListErrorToUserMessage(error: unknown): string {
+  if (error instanceof HttpErrorResponse) {
+    if (error.status === 0) {
+      return "We couldn't reach the server. Please check your connection and try again.";
+    }
+    if (error.status === 401) {
+      // The global authInterceptor (#86/#88) owns redirect-to-login; this
+      // string is defensive for the rare case the interceptor is bypassed.
+      return 'Your session has expired. Please sign in again.';
+    }
+    if (error.status === 403) {
+      return 'You are no longer a member of this project.';
+    }
+    if (error.status === 404) {
+      return 'This project no longer exists.';
+    }
+    if (error.status >= 500) {
+      return 'Something went wrong on our end. Please try again in a moment.';
+    }
+    return "We couldn't load this board. Please try again.";
+  }
+  return "We couldn't load this board. Please try again.";
 }

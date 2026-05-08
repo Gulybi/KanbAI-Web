@@ -6,12 +6,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   TasksApiService,
   mapTaskCreateErrorToUserMessage,
+  mapTaskListErrorToUserMessage,
   mapTaskMoveErrorToUserMessage
 } from './tasks-api.service';
 import {
   CreateTaskDto,
   MoveTaskDto,
   TaskCreateResponse,
+  TaskListResponse,
   TaskMoveResponse,
   TaskResponseDto
 } from '../models/task.model';
@@ -344,6 +346,190 @@ describe('TasksApiService', () => {
     it('maps unknown non-Error values to the generic retry message', () => {
       expect(mapTaskCreateErrorToUserMessage('whatever')).toBe(
         "We couldn't add this task. Please try again."
+      );
+    });
+  });
+
+  describe('getTasksForProject()', () => {
+    const task: TaskResponseDto = {
+      id: 't-1',
+      title: 'Design login page',
+      content: null,
+      taskOrder: 0,
+      columnId: 'col-a',
+      assignedId: null,
+      createdAt: '2026-05-04T00:00:00Z',
+      updatedAt: '2026-05-04T00:00:00Z'
+    };
+
+    it('issues a GET to /task/project/{projectId} with the projectId URL-encoded', () => {
+      const projectId = 'project id with space';
+      service.getTasksForProject(projectId).subscribe();
+
+      const expectedUrl = `${baseUrl}/project/${encodeURIComponent(projectId)}`;
+      const req = httpMock.expectOne(expectedUrl);
+      expect(req.request.method).toBe('GET');
+      req.flush({
+        success: true,
+        message: null,
+        errors: [],
+        data: [task]
+      } satisfies TaskListResponse);
+    });
+
+    it('unwraps { success: true, data: TaskResponseDto[] } on success', () => {
+      let emitted: TaskResponseDto[] | undefined;
+      service.getTasksForProject('p-1').subscribe(t => (emitted = t));
+
+      httpMock
+        .expectOne(`${baseUrl}/project/p-1`)
+        .flush({
+          success: true,
+          message: null,
+          errors: [],
+          data: [task]
+        } satisfies TaskListResponse);
+
+      expect(emitted).toEqual([task]);
+    });
+
+    it('returns an empty array when the project has no tasks', () => {
+      let emitted: TaskResponseDto[] | undefined;
+      service.getTasksForProject('p-1').subscribe(t => (emitted = t));
+
+      httpMock
+        .expectOne(`${baseUrl}/project/p-1`)
+        .flush({
+          success: true,
+          message: null,
+          errors: [],
+          data: []
+        } satisfies TaskListResponse);
+
+      expect(emitted).toEqual([]);
+    });
+
+    it('projects envelope { success: false } into an observable error', () => {
+      let caught: unknown;
+      service.getTasksForProject('p-1').subscribe({
+        next: () => {
+          /* unreachable */
+        },
+        error: err => (caught = err)
+      });
+
+      httpMock
+        .expectOne(`${baseUrl}/project/p-1`)
+        .flush({
+          success: false,
+          message: 'nope',
+          errors: ['bad'],
+          data: null
+        } satisfies TaskListResponse);
+
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe('bad');
+    });
+
+    it('projects { success: true, data: null } into an observable error', () => {
+      let caught: unknown;
+      service.getTasksForProject('p-1').subscribe({
+        next: () => {
+          /* unreachable */
+        },
+        error: err => (caught = err)
+      });
+
+      httpMock
+        .expectOne(`${baseUrl}/project/p-1`)
+        .flush({
+          success: true,
+          message: null,
+          errors: [],
+          data: null
+        } satisfies TaskListResponse);
+
+      expect(caught).toBeInstanceOf(Error);
+    });
+
+    it('surfaces HTTP errors through the error branch', () => {
+      let caught: unknown;
+      service.getTasksForProject('p-1').subscribe({
+        next: () => {
+          /* unreachable */
+        },
+        error: err => (caught = err)
+      });
+
+      httpMock
+        .expectOne(`${baseUrl}/project/p-1`)
+        .flush(
+          { success: false, message: null, errors: [], data: null },
+          { status: 500, statusText: 'Server Error' }
+        );
+
+      expect(caught).toBeInstanceOf(HttpErrorResponse);
+    });
+  });
+
+  describe('mapTaskListErrorToUserMessage()', () => {
+    const make = (status: number) =>
+      new HttpErrorResponse({ status, statusText: 'x', url: '/api/task/project/p-1' });
+
+    it('maps status 0 (network) to the network message', () => {
+      expect(mapTaskListErrorToUserMessage(make(0))).toBe(
+        "We couldn't reach the server. Please check your connection and try again."
+      );
+    });
+
+    it('maps 401 to the session-expired message', () => {
+      expect(mapTaskListErrorToUserMessage(make(401))).toBe(
+        'Your session has expired. Please sign in again.'
+      );
+    });
+
+    it('maps 403 to the not-a-member message', () => {
+      expect(mapTaskListErrorToUserMessage(make(403))).toBe(
+        'You are no longer a member of this project.'
+      );
+    });
+
+    it('maps 404 to the project-missing message', () => {
+      expect(mapTaskListErrorToUserMessage(make(404))).toBe(
+        'This project no longer exists.'
+      );
+    });
+
+    it('maps 5xx to the server-error message', () => {
+      expect(mapTaskListErrorToUserMessage(make(500))).toBe(
+        'Something went wrong on our end. Please try again in a moment.'
+      );
+      expect(mapTaskListErrorToUserMessage(make(503))).toBe(
+        'Something went wrong on our end. Please try again in a moment.'
+      );
+    });
+
+    it('maps 400 to the default fallback copy', () => {
+      expect(mapTaskListErrorToUserMessage(make(400))).toBe(
+        "We couldn't load this board. Please try again."
+      );
+    });
+
+    it('maps other 4xx to the default fallback copy', () => {
+      expect(mapTaskListErrorToUserMessage(make(418))).toBe(
+        "We couldn't load this board. Please try again."
+      );
+    });
+
+    it('maps plain Error (envelope failure) to the default fallback copy', () => {
+      expect(mapTaskListErrorToUserMessage(new Error('envelope failure'))).toBe(
+        "We couldn't load this board. Please try again."
+      );
+    });
+
+    it('maps unknown non-Error values to the default fallback copy', () => {
+      expect(mapTaskListErrorToUserMessage('whatever')).toBe(
+        "We couldn't load this board. Please try again."
       );
     });
   });

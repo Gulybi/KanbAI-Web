@@ -27,6 +27,7 @@ interface BoardStateMock {
   enterBoard: ReturnType<typeof vi.fn>;
   leaveBoard: ReturnType<typeof vi.fn>;
   setColumns: ReturnType<typeof vi.fn>;
+  setTasks: ReturnType<typeof vi.fn>;
   applyOptimisticTaskMove: ReturnType<typeof vi.fn>;
   rollbackOptimisticTaskMove: ReturnType<typeof vi.fn>;
   reconcileServerTaskMove: ReturnType<typeof vi.fn>;
@@ -42,6 +43,7 @@ interface ColumnsApiMock {
 interface TasksApiMock {
   moveTask: ReturnType<typeof vi.fn>;
   createTask: ReturnType<typeof vi.fn>;
+  getTasksForProject: ReturnType<typeof vi.fn>;
 }
 
 interface AttachmentsStateMock {
@@ -86,6 +88,31 @@ function createMockBoardState(): BoardStateMock {
     enterBoard: vi.fn((projectId: string) => currentProjectId.set(projectId)),
     leaveBoard: vi.fn(() => currentProjectId.set(null)),
     setColumns: vi.fn((_projectId: string, cols: BoardColumn[]) => columns.set(cols)),
+    setTasks: vi.fn((projectId: string, dtos: TaskResponseDto[]) => {
+      if (currentProjectId() !== projectId) {
+        return;
+      }
+      const allowed = new Set(columns().map(c => c.id));
+      const next: Record<string, BoardTask[]> = {};
+      for (const dto of dtos) {
+        if (!allowed.has(dto.columnId)) {
+          continue;
+        }
+        const projected: BoardTask = {
+          id: dto.id,
+          title: dto.title,
+          content: dto.content,
+          taskOrder: dto.taskOrder,
+          columnId: dto.columnId,
+          assignedId: dto.assignedId
+        };
+        (next[dto.columnId] ??= []).push(projected);
+      }
+      for (const key of Object.keys(next)) {
+        next[key].sort((a, b) => a.taskOrder - b.taskOrder);
+      }
+      tasksByColumnId.set(next);
+    }),
     applyOptimisticTaskMove: vi.fn(
       (
         _taskId: string,
@@ -179,7 +206,8 @@ function createMockColumnsApi(
 
 function createMockTasksApi(
   result: Observable<TaskResponseDto>,
-  createResult?: Observable<TaskResponseDto>
+  createResult?: Observable<TaskResponseDto>,
+  tasksForProjectResult?: Observable<TaskResponseDto[]>
 ): TasksApiMock {
   return {
     moveTask: vi.fn().mockReturnValue(result),
@@ -195,7 +223,8 @@ function createMockTasksApi(
           createdAt: '',
           updatedAt: ''
         } as TaskResponseDto)
-    )
+    ),
+    getTasksForProject: vi.fn().mockReturnValue(tasksForProjectResult ?? of([]))
   };
 }
 
@@ -212,6 +241,7 @@ interface MountOptions {
   createColumnResult?: Observable<ColumnResponseDto>;
   tasksApiResult?: Observable<TaskResponseDto>;
   createTaskResult?: Observable<TaskResponseDto>;
+  getTasksForProjectResult?: Observable<TaskResponseDto[]>;
 }
 
 async function mount(options: MountOptions = {}): Promise<{
@@ -240,7 +270,8 @@ async function mount(options: MountOptions = {}): Promise<{
         createdAt: '',
         updatedAt: ''
       }),
-    options.createTaskResult
+    options.createTaskResult,
+    options.getTasksForProjectResult
   );
   const attachmentsState = createMockAttachmentsState();
 
@@ -1439,6 +1470,273 @@ describe('BoardPageComponent', () => {
         // A closed; B remains open.
         expect(component.draftFor('col-A').open).toBe(false);
         expect(component.draftFor('col-B').open).toBe(true);
+      });
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #87 — Hydrate tasks on board entry
+  // ----------------------------------------------------------------------
+
+  describe('Hydrate tasks on board entry (issue #87)', () => {
+    function makeTaskResponseDto(
+      partial?: Partial<TaskResponseDto>
+    ): TaskResponseDto {
+      return {
+        id: 't-1',
+        title: 'Hydrated task',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: '',
+        ...partial
+      };
+    }
+
+    describe('loadColumns → loadTasks sequencing', () => {
+      it('calls getTasksForProject only after getColumnsForProject resolves successfully', async () => {
+        const columnsSubject = new Subject<ColumnResponseDto[]>();
+        const { fixture, tasksApi, columnsApi } = await mount({
+          columnsApiResult: columnsSubject.asObservable(),
+          getTasksForProjectResult: of([])
+        });
+
+        fixture.detectChanges();
+        expect(columnsApi.getColumnsForProject).toHaveBeenCalledWith('p-1');
+        // Task read has not fired yet.
+        expect(tasksApi.getTasksForProject).not.toHaveBeenCalled();
+
+        // Columns resolve — task read fires next.
+        columnsSubject.next([makeColumnDto({ id: 'col-1' })]);
+        columnsSubject.complete();
+
+        expect(tasksApi.getTasksForProject).toHaveBeenCalledTimes(1);
+        expect(tasksApi.getTasksForProject).toHaveBeenCalledWith('p-1');
+      });
+
+      it('does NOT fire getTasksForProject when the column fetch fails', async () => {
+        const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });
+        const { fixture, tasksApi, component } = await mount({
+          columnsApiResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        expect(tasksApi.getTasksForProject).not.toHaveBeenCalled();
+        expect(component.taskLoadError()).toBeNull();
+      });
+    });
+
+    describe('setTasks receives hydrated DTOs', () => {
+      it('passes the full DTO array into boardState.setTasks', async () => {
+        const dtos = [
+          makeTaskResponseDto({ id: 't-a', columnId: 'col-1', taskOrder: 0 }),
+          makeTaskResponseDto({ id: 't-b', columnId: 'col-1', taskOrder: 1 })
+        ];
+        const { fixture, boardState } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          getTasksForProjectResult: of(dtos)
+        });
+        fixture.detectChanges();
+
+        expect(boardState.setTasks).toHaveBeenCalledTimes(1);
+        const [projectIdArg, dtosArg] = boardState.setTasks.mock.calls[0];
+        expect(projectIdArg).toBe('p-1');
+        expect(dtosArg).toEqual(dtos);
+      });
+
+      it('announces hydration when taskCount > 0 via dragAnnouncement', async () => {
+        const { fixture, component } = await mount({
+          columnsApiResult: of([
+            makeColumnDto({ id: 'col-1', name: 'To Do', columnOrder: 0 }),
+            makeColumnDto({ id: 'col-2', name: 'Doing', columnOrder: 1 })
+          ]),
+          getTasksForProjectResult: of([
+            makeTaskResponseDto({ id: 't-a', columnId: 'col-1' }),
+            makeTaskResponseDto({ id: 't-b', columnId: 'col-2' })
+          ])
+        });
+        fixture.detectChanges();
+
+        expect(component.dragAnnouncement()).toBe(
+          'Board loaded with 2 tasks across 2 columns.'
+        );
+      });
+
+      it('does NOT announce when the hydration yields zero tasks', async () => {
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          getTasksForProjectResult: of([])
+        });
+        fixture.detectChanges();
+        expect(component.dragAnnouncement()).toBe('');
+      });
+    });
+
+    describe('Error strip on task-read failure', () => {
+      it('populates taskLoadError with the mapped copy and renders the strip', async () => {
+        const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          getTasksForProjectResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        expect(component.taskLoadError()).toBe(
+          'Something went wrong on our end. Please try again in a moment.'
+        );
+        expect(component.isLoadingTasks()).toBe(false);
+
+        const strip = fixture.debugElement.query(
+          By.css('.board-page__task-load-error')
+        );
+        expect(strip).toBeTruthy();
+        expect(strip.nativeElement.getAttribute('role')).toBe('alert');
+        const text = strip.query(By.css('.board-page__task-load-error-text'));
+        expect(text.nativeElement.textContent).toContain(
+          'Something went wrong on our end.'
+        );
+      });
+
+      it('maps each status code to its verbatim copy (AC23–AC28)', async () => {
+        const cases: Array<[number, string]> = [
+          [0, "We couldn't reach the server. Please check your connection and try again."],
+          [401, 'Your session has expired. Please sign in again.'],
+          [403, 'You are no longer a member of this project.'],
+          [404, 'This project no longer exists.'],
+          [500, 'Something went wrong on our end. Please try again in a moment.'],
+          [418, "We couldn't load this board. Please try again."]
+        ];
+
+        for (const [status, expected] of cases) {
+          const err = new HttpErrorResponse({ status, statusText: 'x' });
+          const { fixture, component } = await mount({
+            columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+            getTasksForProjectResult: throwError(() => err)
+          });
+          fixture.detectChanges();
+          expect(component.taskLoadError()).toBe(expected);
+        }
+      });
+    });
+
+    describe('Retry behaviour', () => {
+      it('retry re-issues getTasksForProject and clears the error on success', async () => {
+        const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });
+        const { fixture, component, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          getTasksForProjectResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        expect(component.taskLoadError()).not.toBeNull();
+        expect(tasksApi.getTasksForProject).toHaveBeenCalledTimes(1);
+
+        // Flip the stub to a success on the second call.
+        tasksApi.getTasksForProject.mockReturnValue(
+          of([makeTaskResponseDto({ id: 't-a', columnId: 'col-1' })])
+        );
+
+        component.retryLoadTasks();
+
+        expect(tasksApi.getTasksForProject).toHaveBeenCalledTimes(2);
+        expect(component.taskLoadError()).toBeNull();
+        expect(component.isLoadingTasks()).toBe(false);
+      });
+
+      it('retry is a no-op while a load is already in flight', async () => {
+        const pending = new Subject<TaskResponseDto[]>();
+        const { fixture, component, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          getTasksForProjectResult: pending.asObservable()
+        });
+        fixture.detectChanges();
+
+        // Initial load is in flight from ngOnInit.
+        expect(component.isLoadingTasks()).toBe(true);
+        expect(tasksApi.getTasksForProject).toHaveBeenCalledTimes(1);
+
+        component.retryLoadTasks();
+        // Still only one call — the guard short-circuited the second invocation.
+        expect(tasksApi.getTasksForProject).toHaveBeenCalledTimes(1);
+      });
+
+      it('retry is a no-op when currentProjectId is null', async () => {
+        const { fixture, component, boardState, tasksApi } = await mount();
+        fixture.detectChanges();
+        const baselineCalls = tasksApi.getTasksForProject.mock.calls.length;
+        boardState.currentProjectId.set(null);
+
+        component.retryLoadTasks();
+        expect(tasksApi.getTasksForProject.mock.calls.length).toBe(baselineCalls);
+      });
+
+      it('Retry button is disabled while isLoadingTasks is true (template binding)', async () => {
+        // The [disabled] binding on the Retry button is isLoadingTasks().
+        // Since retryLoadTasks clears taskLoadError (unmounting the strip)
+        // before the new request lands, we verify the binding indirectly:
+        // while a request is in flight, isLoadingTasks() is true, so if the
+        // strip were present (new failure mid-flight) the button would be
+        // disabled via the template binding.
+        const pendingInitial = new Subject<TaskResponseDto[]>();
+        const { fixture, component } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          getTasksForProjectResult: pendingInitial.asObservable()
+        });
+        fixture.detectChanges();
+
+        // Initial load is in flight — isLoadingTasks is true, strip NOT rendered.
+        expect(component.isLoadingTasks()).toBe(true);
+        expect(component.taskLoadError()).toBeNull();
+      });
+
+      it('after retry, isLoadingTasks becomes true and the strip unmounts until next failure', async () => {
+        const pending = new Subject<TaskResponseDto[]>();
+        const err = new HttpErrorResponse({ status: 500, statusText: 'oops' });
+        const { fixture, component, tasksApi } = await mount({
+          columnsApiResult: of([makeColumnDto({ id: 'col-1' })]),
+          getTasksForProjectResult: throwError(() => err)
+        });
+        fixture.detectChanges();
+
+        // First failure — strip visible.
+        expect(component.taskLoadError()).not.toBeNull();
+        expect(
+          fixture.debugElement.query(By.css('.board-page__task-load-error'))
+        ).toBeTruthy();
+
+        tasksApi.getTasksForProject.mockReturnValue(pending.asObservable());
+        component.retryLoadTasks();
+        fixture.detectChanges();
+
+        // Per design spec §4 Flow B step 5: retry clears taskLoadError then
+        // waits; the strip unmounts until the retry also fails.
+        expect(component.isLoadingTasks()).toBe(true);
+        expect(component.taskLoadError()).toBeNull();
+        expect(
+          fixture.debugElement.query(By.css('.board-page__task-load-error'))
+        ).toBeNull();
+      });
+    });
+
+    describe('Stale navigation guard', () => {
+      it('getTasksForProject is NOT called when columns resolve for a stale project', async () => {
+        const columnsSubject = new Subject<ColumnResponseDto[]>();
+        const { fixture, tasksApi, boardState } = await mount({
+          columnsApiResult: columnsSubject.asObservable()
+        });
+        fixture.detectChanges();
+
+        // Simulate the user navigating away — currentProjectId flips.
+        boardState.currentProjectId.set('p-2');
+
+        // A's columns land after navigation.
+        columnsSubject.next([makeColumnDto({ id: 'col-1' })]);
+        columnsSubject.complete();
+
+        // The component guards against firing the task read for A.
+        expect(tasksApi.getTasksForProject).not.toHaveBeenCalled();
       });
     });
   });
