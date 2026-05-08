@@ -46,7 +46,7 @@
     <app-form-button
       type="submit"
       class="add-member-form__submit"
-      [disabled]="disabled || emailControl.invalid"
+      [disabled]="disabled || !canSubmit()"
     >
       @if (disabled) {
         <span aria-hidden="true">Adding…</span>
