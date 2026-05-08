@@ -1,0 +1,178 @@
+<section
+  class="task-description"
+  [attr.aria-labelledby]="headingId()"
+>
+  <div class="task-description__header">
+    <h3
+      class="task-description__label"
+      [id]="headingId()"
+    >Description</h3>
+    @if (mode() === 'read') {
+      <div class="task-description__read-actions">
+        @if (readDisplay().mode === 'text') {
+          <button
+            #editButton
+            type="button"
+            class="task-description__icon-button"
+            [attr.aria-label]="COPY.EDIT_BUTTON_LABEL"
+            (click)="enterEdit()"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M2.5 11.5v2h2l7-7-2-2-7 7z" />
+              <path d="M9.5 4.5l2 2" />
+            </svg>
+            <span>Edit</span>
+          </button>
+        }
+        @if (showClearAffordance()) {
+          <button
+            type="button"
+            class="task-description__icon-button task-description__icon-button--danger"
+            [disabled]="isClearing()"
+            [attr.aria-busy]="isClearing() || null"
+            [attr.aria-label]="COPY.CLEAR_BUTTON_LABEL"
+            (click)="onClear()"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M3 4h10" />
+              <path d="M5 4v-1a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+              <path d="M4.5 4l.5 9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l.5-9" />
+            </svg>
+            <span>Clear</span>
+          </button>
+        }
+      </div>
+    }
+  </div>
+
+  @if (mode() === 'read') {
+    @if (readDisplay().mode === 'text') {
+      <button
+        type="button"
+        class="task-description__text-button"
+        (click)="enterEdit()"
+      >{{ readDisplay().text }}</button>
+    } @else {
+      <button
+        #emptyStateButton
+        type="button"
+        class="task-description__empty"
+        (click)="enterEdit()"
+      >{{ COPY.EMPTY_PLACEHOLDER }}</button>
+    }
+  } @else {
+    @if (remoteUpdateDetected()) {
+      <div
+        class="task-description__banner"
+        role="status"
+        aria-live="polite"
+      >
+        <p class="task-description__banner-text">{{ COPY.BANNER_REMOTE_UPDATED }}</p>
+        <button
+          type="button"
+          class="task-description__banner-action"
+          [disabled]="isSaving()"
+          (click)="discardAndReload()"
+        >{{ COPY.BANNER_DISCARD_ACTION }}</button>
+      </div>
+    }
+
+    <label
+      class="task-description__editor-label"
+      [attr.for]="editorId()"
+    >{{ COPY.TEXTAREA_LABEL }}</label>
+    <textarea
+      #editor
+      class="task-description__editor"
+      [id]="editorId()"
+      [value]="draft()"
+      (input)="onTextareaInput($event)"
+      (keydown.control.enter)="onSave()"
+      (keydown.meta.enter)="onSave()"
+      (keydown.escape)="onCancel($event)"
+      [disabled]="isSaving()"
+      [attr.aria-invalid]="inlineError() !== null ? 'true' : null"
+      [attr.aria-describedby]="describedBy()"
+    ></textarea>
+
+    <div class="task-description__meta">
+      @if (inlineError(); as err) {
+        <p
+          class="task-description__error"
+          [id]="errorId()"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M8 1.333 14.667 12.8H1.333L8 1.333Zm0 4.8v3.2h.667v-3.2H8Zm-.333 4.534v.666h1v-.666h-1Z" />
+          </svg>
+          <span>{{ err }}</span>
+        </p>
+      } @else {
+        <span></span>
+      }
+      @if (showCounter()) {
+        <span
+          class="task-description__counter"
+          [class.task-description__counter--over-limit]="isOverLimit()"
+          [id]="counterId()"
+        >{{ rawLength() }} / {{ MAX_LENGTH }}</span>
+      } @else {
+        <span></span>
+      }
+    </div>
+
+    <div class="task-description__edit-actions">
+      <button
+        type="button"
+        class="task-description__cancel"
+        [disabled]="isSaving()"
+        (click)="onCancel($event)"
+      >{{ COPY.CANCEL_BUTTON_LABEL }}</button>
+      <button
+        type="button"
+        class="task-description__save"
+        [disabled]="!canSave()"
+        (click)="onSave()"
+      >
+        <span>{{ COPY.SAVE_BUTTON_LABEL }}</span>
+        @if (isSaving()) {
+          <span
+            class="task-description__save-dots"
+            aria-hidden="true"
+          ><span></span></span>
+        }
+      </button>
+    </div>
+  }
+
+  <span
+    class="task-description__live"
+    aria-live="polite"
+    aria-atomic="true"
+  >{{ liveMessage() }}</span>
+</section>

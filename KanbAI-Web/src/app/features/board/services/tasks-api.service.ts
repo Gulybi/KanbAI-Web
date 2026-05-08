@@ -7,10 +7,13 @@ import {
   CreateTaskDto,
   MoveTaskDto,
   TaskCreateResponse,
+  TaskDescriptionUpdateResponse,
   TaskListResponse,
   TaskMoveResponse,
-  TaskResponseDto
+  TaskResponseDto,
+  UpdateTaskDescriptionDto
 } from '../models/task.model';
+import { TASK_DESCRIPTION_COPY } from '../components/task-description-section/task-description-copy';
 
 /**
  * Only task operation supported in this ticket is a drag-triggered move.
@@ -95,6 +98,40 @@ export class TasksApiService {
         return response.data;
       })
     );
+  }
+
+  /**
+   * `PUT /api/task/{taskId}/description` with body `{ content }` (issue #91).
+   * Returns the full post-update `TaskResponseDto` so the caller could
+   * reconcile if it wanted to — in this ticket the caller does NOT
+   * reconcile locally (BoardStateService.onTaskUpdated already will via
+   * the SignalR echo); it just uses `200` as the signal to flip back to
+   * read mode. Envelope unwrap mirrors `moveTask` / `createTask`.
+   */
+  updateTaskDescription(
+    taskId: string,
+    dto: UpdateTaskDescriptionDto
+  ): Observable<TaskResponseDto> {
+    const url = `${this.apiUrl}/${encodeURIComponent(taskId)}/description`;
+    return this.http.put<TaskDescriptionUpdateResponse>(url, dto).pipe(
+      map(response => {
+        if (!response.success || response.data == null) {
+          throw new Error(
+            response.errors?.[0] ?? response.message ?? 'Request failed'
+          );
+        }
+        return response.data;
+      })
+    );
+  }
+
+  /**
+   * `DELETE /api/task/{taskId}/description` (issue #91). Server returns
+   * `204 No Content` on success; no envelope on the wire.
+   */
+  clearTaskDescription(taskId: string): Observable<void> {
+    const url = `${this.apiUrl}/${encodeURIComponent(taskId)}/description`;
+    return this.http.delete<void>(url);
   }
 }
 
@@ -189,4 +226,72 @@ export function mapTaskListErrorToUserMessage(error: unknown): string {
     return "We couldn't load this board. Please try again.";
   }
   return "We couldn't load this board. Please try again.";
+}
+
+/** Operation passed into `mapTaskDescriptionErrorToUserMessage`. */
+export type TaskDescriptionOperation = 'save' | 'clear';
+
+/**
+ * Discriminated result returned by `mapTaskDescriptionErrorToUserMessage`
+ * (issue #91). Callers switch on `kind`:
+ *  - `inline`        → render `text` inline inside the editor / confirm.
+ *  - `not-found`     → close the panel + show the 404 toast.
+ *  - `server-errors` → 400 with a non-empty `ApiResponse.errors`; the
+ *                      component renders `texts[0]` verbatim as inline copy,
+ *                      falling back to `INLINE_ERROR_GENERIC_SAVE` when empty.
+ *
+ * The mapper never exposes status codes, URLs, stack traces, or raw envelope
+ * errors beyond the single first string on 400 — same contract as the
+ * existing mappers.
+ */
+export type TaskDescriptionErrorResult =
+  | { kind: 'inline'; text: string }
+  | { kind: 'not-found' }
+  | { kind: 'server-errors'; texts: readonly string[] };
+
+interface ApiResponseLikeErrors {
+  errors?: readonly string[];
+}
+
+/**
+ * Translates an HTTP error from the description PUT/DELETE into the
+ * discriminated result above. `operation` parameterises 400 handling —
+ * save's 400 carries `ApiResponse.errors`; clear is not expected to
+ * produce 400 per the backend contract, so defensively falls back to
+ * `INLINE_ERROR_GENERIC_SAVE`.
+ */
+export function mapTaskDescriptionErrorToUserMessage(
+  error: unknown,
+  operation: TaskDescriptionOperation
+): TaskDescriptionErrorResult {
+  if (error instanceof HttpErrorResponse) {
+    if (error.status === 0) {
+      return { kind: 'inline', text: TASK_DESCRIPTION_COPY.INLINE_ERROR_NETWORK };
+    }
+    if (error.status === 403) {
+      return {
+        kind: 'inline',
+        text: TASK_DESCRIPTION_COPY.INLINE_ERROR_PERMISSION
+      };
+    }
+    if (error.status === 404) {
+      return { kind: 'not-found' };
+    }
+    if (error.status === 400 && operation === 'save') {
+      const envelope = error.error as ApiResponseLikeErrors | null | undefined;
+      const texts = Array.isArray(envelope?.errors) ? envelope!.errors! : [];
+      return { kind: 'server-errors', texts };
+    }
+    // 401 is owned by the global authInterceptor; every other status falls
+    // back to the generic save copy so the user sees actionable advice.
+    return {
+      kind: 'inline',
+      text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
+    };
+  }
+
+  return {
+    kind: 'inline',
+    text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
+  };
 }

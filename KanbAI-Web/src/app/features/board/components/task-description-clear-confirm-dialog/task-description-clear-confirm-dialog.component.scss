@@ -1,0 +1,121 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+.task-description-clear-confirm-panel {
+  background-color: $bg-main;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-dropdown;
+  width: calc(100vw - (#{$space-md} * 2));
+  max-width: 420px;
+  padding: $space-md;
+  display: block;
+  animation: task-description-clear-confirm-enter $motion-base both;
+
+  @include respond-to('md') {
+    padding: $space-lg;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 0.01ms;
+  }
+
+  app-task-description-clear-confirm-dialog {
+    display: block;
+    font-family: $font-family-base;
+    color: $text-primary;
+  }
+
+  .task-description-clear-confirm__heading {
+    margin: 0 0 $space-lg 0;
+    font-size: $font-size-lg;
+    font-weight: $font-weight-semibold;
+    line-height: $line-height-tight;
+    color: $text-primary;
+  }
+
+  .task-description-clear-confirm__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: $space-sm;
+
+    @media (max-width: #{$bp-md - 1px}) {
+      flex-direction: column-reverse;
+      align-items: stretch;
+    }
+  }
+
+  .task-description-clear-confirm__cancel {
+    appearance: none;
+    background-color: transparent;
+    color: $text-primary;
+    border: 1px solid $border-light;
+    border-radius: $radius-md;
+    padding: $space-sm $space-md;
+    min-height: 44px;
+    font-family: $font-family-base;
+    font-size: $font-size-md;
+    font-weight: $font-weight-medium;
+    line-height: 1;
+    cursor: pointer;
+
+    transition: background-color $motion-fast, border-color $motion-fast;
+
+    &:hover { background-color: $bg-sidebar-light; }
+    &:focus-visible { outline: 2px solid $brand-primary; outline-offset: 2px; }
+  }
+
+  .task-description-clear-confirm__confirm {
+    appearance: none;
+    background-color: $status-high;
+    color: $text-inverse;
+    border: 1px solid $status-high;
+    border-radius: $radius-md;
+    padding: $space-sm $space-md;
+    min-height: 44px;
+    min-width: 120px;
+    font-family: $font-family-base;
+    font-size: $font-size-md;
+    font-weight: $font-weight-medium;
+    line-height: 1;
+    cursor: pointer;
+
+    transition: background-color $motion-fast, border-color $motion-fast;
+
+    &:hover:not(:disabled) {
+      box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.08);
+    }
+    &:active:not(:disabled) { transform: translateY(1px); }
+    &:focus-visible {
+      outline: 2px solid $status-high;
+      outline-offset: 2px;
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.task-description-clear-confirm-backdrop {
+  background-color: rgba(11, 11, 11, 0.5);
+  animation: task-description-clear-confirm-backdrop-fade $motion-fast both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 0.01ms;
+  }
+}
+
+@keyframes task-description-clear-confirm-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes task-description-clear-confirm-backdrop-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

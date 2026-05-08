@@ -48,3 +48,16 @@ export type TaskCreateResponse = ApiResponse<TaskResponseDto>;
 
 /** Envelope alias for the task-list response (issue #87). */
 export type TaskListResponse = ApiResponse<TaskResponseDto[]>;
+
+/**
+ * Body of `PUT /api/task/{taskId}/description` (issue #91). Backend trims
+ * leading/trailing whitespace server-side; clients must also trim before
+ * send so the length validator and the on-wire value agree. Max length
+ * 10,000 chars applied to the trimmed value.
+ */
+export interface UpdateTaskDescriptionDto {
+  content: string;
+}
+
+/** Envelope alias for the description-update endpoint (issue #91). */
+export type TaskDescriptionUpdateResponse = ApiResponse<TaskResponseDto>;

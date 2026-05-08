@@ -37,21 +37,10 @@
   </header>
 
   <div class="task-detail-panel__body">
-    <section
-      class="task-detail-panel__section"
-      [attr.aria-labelledby]="descriptionLabelId()"
-    >
-      <h3
-        class="task-detail-panel__section-label"
-        [id]="descriptionLabelId()"
-      >Description</h3>
-
-      @if (descriptionDisplay().mode === 'text') {
-        <p class="task-detail-panel__description">{{ descriptionDisplay().text }}</p>
-      } @else {
-        <p class="task-detail-panel__description-empty">No description yet.</p>
-      }
-    </section>
+    <app-task-description-section
+      [task]="task()"
+      (taskNotFound)="handleTaskNotFound()"
+    />
 
     <section class="task-detail-panel__section">
       <h3 class="task-detail-panel__section-label">Attachment</h3>
