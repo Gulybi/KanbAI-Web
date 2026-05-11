@@ -33,6 +33,15 @@ import {
   INITIAL_ATTACHMENTS_STATE
 } from './attachments-state.model';
 
+/**
+ * Discriminator for hydrate call origin. Governs how the dedupe guard
+ * behaves when a prior fetch is already `ready`:
+ *  - 'effect' (panel-open transition path): no-op when `ready`.
+ *  - 'retry'  (explicit user action):       fetch unconditionally
+ *                                           (modulo the `loading` dedupe).
+ */
+export type AttachmentsHydrateTrigger = 'effect' | 'retry';
+
 /** Entries in `cancelledAssetIds` auto-expire after this long. */
 const CANCELLED_ASSET_TTL_MS = 5 * 60 * 1000;
 
@@ -201,20 +210,41 @@ export class AttachmentsStateService extends BaseStateService<AttachmentsState> 
   }
 
   /**
-   * Fires the panel-open list fetch for the given task. Idempotent: a call
-   * while a fetch for the same taskId is already loading is a no-op.
+   * Fires the panel-open list fetch for the given task.
+   *
+   * @param taskId   The task whose attachment list should be hydrated.
+   * @param trigger  'effect' when called from the panel's task-transition
+   *                 effect (no-op when the list is already `ready`); 'retry'
+   *                 when called from an explicit user action
+   *                 (always fetches). Defaults to 'retry' so pre-existing
+   *                 callers keep today's behaviour.
+   *
+   * Idempotency contract:
+   *  - Concurrent calls for the same taskId while a fetch is `loading` are
+   *    always deduped.
+   *  - Calls for the same taskId while the list is `ready` are a no-op iff
+   *    `trigger === 'effect'`; `trigger === 'retry'` fetches.
+   *  - Calls on `error` or `idle`/undefined always fetch.
    *
    * On success the server response is merged into `completedByTaskId` via
    * {@link mergeCompletedAssets}; on failure the error is surfaced in
    * `completedFetchByTaskId[taskId]` but `completedByTaskId` is preserved
    * (so SignalR-origin rows stay visible behind the error banner).
    */
-  hydrateCompletedForTask(taskId: string): void {
+  hydrateCompletedForTask(
+    taskId: string,
+    trigger: AttachmentsHydrateTrigger = 'retry'
+  ): void {
     if (!taskId) {
       return;
     }
     const current = this.getState().completedFetchByTaskId[taskId];
     if (current?.phase === 'loading') {
+      return;
+    }
+    // Defensive backstop: effect-driven hydrate against an already-hydrated
+    // list is a no-op. Retry is unaffected and always fetches on `ready`.
+    if (trigger === 'effect' && current?.phase === 'ready') {
       return;
     }
     const existingSub = this.listSubs.get(taskId);

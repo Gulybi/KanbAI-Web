@@ -250,14 +250,74 @@ describe('TaskDetailPanelComponent', () => {
 
   describe('attachment list (#51)', () => {
     it('calls hydrateCompletedForTask on initial render for the open task', () => {
-      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-1');
+      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-1', 'effect');
     });
 
     it('re-calls hydrateCompletedForTask when the task input changes to a new id', () => {
       mockState.hydrateCompletedForTask.mockClear();
       fixture.componentRef.setInput('task', makeTask({ id: 't-2' }));
       fixture.detectChanges();
-      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-2');
+      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-2', 'effect');
+    });
+
+    it('does not re-call hydrateCompletedForTask when the task input re-emits with the same id but a new reference', () => {
+      // Initial render already fired the effect-driven hydrate call.
+      mockState.hydrateCompletedForTask.mockClear();
+      // Same id, deliberately new object reference and new title — simulates
+      // the BoardStateService.onTaskUpdated echo that rebuilds BoardTask
+      // references for the open task without changing its id.
+      fixture.componentRef.setInput(
+        'task',
+        makeTask({ id: 't-1', title: 'Renamed - same id' })
+      );
+      fixture.detectChanges();
+      expect(mockState.hydrateCompletedForTask).not.toHaveBeenCalled();
+    });
+
+    it('does not re-call hydrateCompletedForTask when only a non-id field of the open task changes', () => {
+      mockState.hydrateCompletedForTask.mockClear();
+      // Same id, new content — simulates a remote description edit echo.
+      fixture.componentRef.setInput(
+        'task',
+        makeTask({ id: 't-1', content: 'Freshly edited description.' })
+      );
+      fixture.detectChanges();
+      expect(mockState.hydrateCompletedForTask).not.toHaveBeenCalled();
+    });
+
+    it('re-calls hydrateCompletedForTask after a full close+reopen onto the same id (new component instance)', () => {
+      // Tear down the fixture from beforeEach, then mount a fresh instance
+      // for the same task id. The new component has a fresh
+      // lastHydratedTaskId tracker, so the effect must fire once.
+      fixture.destroy();
+      const freshMockState = createMockAttachmentsState();
+
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [TaskDetailPanelComponent],
+        providers: [
+          { provide: AttachmentsStateService, useValue: freshMockState },
+          {
+            provide: TasksApiService,
+            useValue: {
+              updateTaskDescription: vi.fn(() => of({} as never)),
+              clearTaskDescription: vi.fn(() => of(void 0))
+            }
+          }
+        ]
+      });
+
+      const freshFixture = TestBed.createComponent(TaskDetailPanelComponent);
+      freshFixture.componentRef.setInput('task', makeTask({ id: 't-1' }));
+      freshFixture.componentRef.setInput('disabled', false);
+      freshFixture.componentRef.setInput('disabledReason', null);
+      freshFixture.detectChanges();
+
+      expect(freshMockState.hydrateCompletedForTask).toHaveBeenCalledTimes(1);
+      expect(freshMockState.hydrateCompletedForTask).toHaveBeenCalledWith(
+        't-1',
+        'effect'
+      );
     });
 
     it('renders an <app-attachment-list> inside the attachments section', () => {
@@ -268,7 +328,7 @@ describe('TaskDetailPanelComponent', () => {
     it('retry of the list fetch calls hydrateCompletedForTask again', () => {
       mockState.hydrateCompletedForTask.mockClear();
       component.handleRetryListFetch();
-      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-1');
+      expect(mockState.hydrateCompletedForTask).toHaveBeenCalledWith('t-1', 'retry');
     });
 
     it('does not render the section divider while idle + empty', () => {

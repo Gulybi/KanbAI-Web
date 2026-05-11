@@ -722,6 +722,68 @@ describe('AttachmentsStateService', () => {
       // And after the error, still populated.
       expect(service.completedByTaskId()['t-1']?.length).toBe(1);
     });
+
+    // --- #95: trigger-gated dedupe matrix -------------------------------
+    it('is a no-op when trigger="effect" and the current phase is "ready"', () => {
+      // Seed by running a full fetch to ready.
+      service.hydrateCompletedForTask('t-1');
+      api.lastListEmitter().next([]);
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('ready');
+      const callsBefore = api.listAttachmentsByTask.mock.calls.length;
+
+      // Effect-driven re-hydrate against the same ready list must short-circuit.
+      service.hydrateCompletedForTask('t-1', 'effect');
+
+      expect(api.listAttachmentsByTask.mock.calls.length).toBe(callsBefore);
+      // Phase must stay ready — no transition to loading.
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('ready');
+    });
+
+    it('still fetches when trigger="retry" and the current phase is "ready"', () => {
+      service.hydrateCompletedForTask('t-1');
+      api.lastListEmitter().next([]);
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('ready');
+      const callsBefore = api.listAttachmentsByTask.mock.calls.length;
+
+      service.hydrateCompletedForTask('t-1', 'retry');
+
+      expect(api.listAttachmentsByTask.mock.calls.length).toBe(callsBefore + 1);
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('loading');
+    });
+
+    it('fetches when trigger="effect" and the current phase is "error"', () => {
+      service.hydrateCompletedForTask('t-1');
+      api.lastListEmitter().error(new HttpErrorResponse({ status: 500 }));
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('error');
+      const callsBefore = api.listAttachmentsByTask.mock.calls.length;
+
+      service.hydrateCompletedForTask('t-1', 'effect');
+
+      expect(api.listAttachmentsByTask.mock.calls.length).toBe(callsBefore + 1);
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('loading');
+    });
+
+    it('fetches when trigger="effect" and no entry exists (idle)', () => {
+      expect(service.completedFetchByTaskId()['t-1']).toBeUndefined();
+
+      service.hydrateCompletedForTask('t-1', 'effect');
+
+      expect(api.listAttachmentsByTask).toHaveBeenCalledWith('t-1');
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('loading');
+    });
+
+    it('default parameter (no trigger arg) preserves today\'s behaviour and fetches on "ready"', () => {
+      service.hydrateCompletedForTask('t-1');
+      api.lastListEmitter().next([]);
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('ready');
+      const callsBefore = api.listAttachmentsByTask.mock.calls.length;
+
+      // Bare call — default trigger must be 'retry', so this fetches.
+      service.hydrateCompletedForTask('t-1');
+
+      expect(api.listAttachmentsByTask.mock.calls.length).toBe(callsBefore + 1);
+      expect(service.completedFetchByTaskId()['t-1']?.phase).toBe('loading');
+    });
   });
 
   describe('list subscription cleanup', () => {
