@@ -16,6 +16,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Dialog } from '@angular/cdk/dialog';
 
 import { BoardTask } from '../../state/board-state.model';
+import { BoardStateService } from '../../state/board-state.service';
 import {
   TasksApiService,
   mapTaskDescriptionErrorToUserMessage
@@ -52,6 +53,7 @@ type ReadDisplay =
 })
 export class TaskDescriptionSectionComponent {
   private readonly tasksApi = inject(TasksApiService);
+  private readonly boardState = inject(BoardStateService);
   private readonly dialog = inject(Dialog);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -186,9 +188,14 @@ export class TaskDescriptionSectionComponent {
       .updateTaskDescription(taskId, { content: trimmed })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
+        next: dto => {
           this.isSaving.set(false);
+          // Order matters: exitEditMode flips mode to 'read' BEFORE the
+          // state apply fires. The component-local remote-update effect
+          // early-exits when mode !== 'edit', so our own save's content
+          // change never trips the "updated by someone else" banner.
           this.exitEditMode();
+          this.boardState.applyLocalTaskUpdateFromDto(dto);
           this.announce(TASK_DESCRIPTION_COPY.ANNOUNCE_SAVED);
         },
         error: err => {
@@ -252,9 +259,8 @@ export class TaskDescriptionSectionComponent {
       .subscribe({
         next: () => {
           this.isClearing.set(false);
+          this.boardState.applyLocalTaskDescriptionCleared(taskId);
           this.announce(TASK_DESCRIPTION_COPY.ANNOUNCE_CLEARED);
-          // BoardStateService.onTaskUpdated receives the TaskUpdated echo
-          // and flips `content` to null; readDisplay() re-derives to empty.
         },
         error: err => {
           this.isClearing.set(false);

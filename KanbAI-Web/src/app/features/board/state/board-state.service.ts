@@ -313,43 +313,134 @@ export class BoardStateService extends BaseStateService<BoardState> {
    * emits `TaskUpdated` only on description mutations, so this is not
    * expected), the handler trusts `evt.columnId` and moves the task — same
    * cross-bucket reconcile pattern as `reconcileServerTaskMove`.
+   *
+   * Delegates to {@link reconcileTaskById} so the shared reconcile path is
+   * used by both the SignalR echo and the HTTP-success entry points added
+   * in issue #94 (`applyLocalTaskUpdateFromDto` / `applyLocalTaskDescriptionCleared`).
    */
   private onTaskUpdated(evt: TaskUpdatedEvent): void {
     if (!evt || this.getState().currentProjectId === null) {
       return;
     }
-    const buckets = this.getState().tasksByColumnId;
-    const ownerEntry = Object.entries(buckets).find(([, bucket]) =>
-      bucket.some(t => t.id === evt.id)
-    );
-    if (!ownerEntry) {
-      return;
-    }
-    const [ownerColumnId, ownerBucket] = ownerEntry;
-    const reconciled: BoardTask = {
+    this.reconcileTaskById({
       id: evt.id,
       title: evt.title,
       content: evt.content,
       taskOrder: evt.taskOrder,
       columnId: evt.columnId,
       assignedId: evt.assignedId
-    };
+    });
+  }
+
+  /**
+   * Shared bucket-replace + cross-bucket-move helper (issue #94). Called by
+   * both the SignalR echo path ({@link onTaskUpdated}) and the two new
+   * HTTP-success entry points ({@link applyLocalTaskUpdateFromDto} and
+   * {@link applyLocalTaskDescriptionCleared}) so both paths agree on
+   * reconcile semantics.
+   *
+   * Equality guard: if the owner bucket already contains a task row that is
+   * field-for-field equal to `task`, the `setState` call is skipped. This
+   * absorbs the "same-client apply, then echo of same-client change"
+   * sequence as a single net mutation — the echo is a genuine no-op. The
+   * guard does NOT change remote-edit semantics because a real remote edit
+   * always produces a new value for at least one field (content at
+   * minimum), so the guard never fires on a genuine remote change.
+   */
+  private reconcileTaskById(task: BoardTask): void {
+    const buckets = this.getState().tasksByColumnId;
+    const ownerEntry = Object.entries(buckets).find(([, bucket]) =>
+      bucket.some(t => t.id === task.id)
+    );
+    if (!ownerEntry) {
+      return;
+    }
+    const [ownerColumnId, ownerBucket] = ownerEntry;
+
+    // Equality guard — if the existing row equals the proposed row
+    // field-for-field (and already lives in the same owner column), there
+    // is no state change to apply. `BoardTask` is a flat interface of
+    // scalars so strict-equal on every field suffices; a deep equality
+    // helper is not needed.
+    const existing = ownerBucket.find(t => t.id === task.id)!;
+    if (
+      ownerColumnId === task.columnId &&
+      existing.title === task.title &&
+      existing.content === task.content &&
+      existing.taskOrder === task.taskOrder &&
+      existing.columnId === task.columnId &&
+      existing.assignedId === task.assignedId
+    ) {
+      return;
+    }
+
     const nextBuckets: Record<string, BoardTask[]> = { ...buckets };
-    if (ownerColumnId === evt.columnId) {
+    if (ownerColumnId === task.columnId) {
       nextBuckets[ownerColumnId] = ownerBucket
-        .map(t => (t.id === evt.id ? reconciled : t))
+        .map(t => (t.id === task.id ? task : t))
         .sort((a, b) => a.taskOrder - b.taskOrder);
     } else {
       // Cross-bucket reconcile (defensive — not expected on description-only updates).
-      nextBuckets[ownerColumnId] = ownerBucket.filter(t => t.id !== evt.id);
-      const destBucket = (nextBuckets[evt.columnId] ?? []).filter(
-        t => t.id !== evt.id
+      nextBuckets[ownerColumnId] = ownerBucket.filter(t => t.id !== task.id);
+      const destBucket = (nextBuckets[task.columnId] ?? []).filter(
+        t => t.id !== task.id
       );
-      nextBuckets[evt.columnId] = [...destBucket, reconciled].sort(
+      nextBuckets[task.columnId] = [...destBucket, task].sort(
         (a, b) => a.taskOrder - b.taskOrder
       );
     }
     this.setState({ tasksByColumnId: nextBuckets });
+  }
+
+  /**
+   * Issue #94 — public entry point for the originating client's description
+   * save success path. Projects the authoritative `TaskResponseDto` returned
+   * by `PUT /api/task/{taskId}/description` (200) to a `BoardTask` (dropping
+   * `createdAt` / `updatedAt`, same as `applyCreatedTask` / `setTasks`) and
+   * delegates to the shared {@link reconcileTaskById} helper. The subsequent
+   * SignalR `TaskUpdated` echo lands on identical state and is absorbed as a
+   * no-op by the equality guard.
+   *
+   * Silent no-op when `currentProjectId` is null (user navigated away
+   * between PUT and 200) or when the task id is not present in any bucket
+   * (defensive — same precondition as {@link onTaskUpdated}).
+   */
+  applyLocalTaskUpdateFromDto(dto: TaskResponseDto): void {
+    if (!dto || this.getState().currentProjectId === null) {
+      return;
+    }
+    this.reconcileTaskById({
+      id: dto.id,
+      title: dto.title,
+      content: dto.content,
+      taskOrder: dto.taskOrder,
+      columnId: dto.columnId,
+      assignedId: dto.assignedId
+    });
+  }
+
+  /**
+   * Issue #94 — public entry point for the originating client's description
+   * clear success path. `DELETE /api/task/{taskId}/description` returns 204
+   * No Content; this method looks up the task currently in state, clones it
+   * with `content: null`, and delegates to the shared reconciler.
+   *
+   * Silent no-op when `currentProjectId` is null or the task is not in
+   * state (the echo or the 404 handling path will resolve it).
+   */
+  applyLocalTaskDescriptionCleared(taskId: string): void {
+    if (this.getState().currentProjectId === null) {
+      return;
+    }
+    const buckets = this.getState().tasksByColumnId;
+    for (const bucket of Object.values(buckets)) {
+      const existing = bucket.find(t => t.id === taskId);
+      if (existing) {
+        this.reconcileTaskById({ ...existing, content: null });
+        return;
+      }
+    }
+    // Task not present — silent no-op.
   }
 
   // ------------------- HTTP-driven mutations (issue #47) -------------------

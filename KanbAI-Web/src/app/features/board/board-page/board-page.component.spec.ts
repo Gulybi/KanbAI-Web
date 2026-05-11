@@ -659,24 +659,33 @@ describe('BoardPageComponent', () => {
 
   describe('Task detail drawer', () => {
     it('opens the drawer when handleTaskOpened is called with a task', async () => {
-      const { fixture, component } = await mount({
+      const { fixture, component, boardState } = await mount({
         columnsApiResult: of([makeColumnDto({ id: 'col-1', name: 'To Do' })])
       });
       fixture.detectChanges();
 
-      const task = makeTask({ id: 't-77', title: 'Open me' });
+      // Seed the task into the mock board state so the computed projection
+      // off tasksByColumnId() can resolve the id (issue #94 changed
+      // selectedTask from a snapshot to a live projection).
+      const task = makeTask({ id: 't-77', title: 'Open me', columnId: 'col-1' });
+      boardState.tasksByColumnId.set({ 'col-1': [task] });
       component.handleTaskOpened(task);
       fixture.detectChanges();
 
-      expect(component.selectedTask()).toBe(task);
+      // Computed returns a value-equal row from state (not the original
+      // reference), so assert structural equality rather than identity.
+      expect(component.selectedTask()).toEqual(task);
+      expect(component.selectedTask()?.id).toBe(task.id);
       const panel = fixture.debugElement.query(By.css('app-task-detail-panel'));
       expect(panel).toBeTruthy();
     });
 
     it('closes the drawer when handleTaskDetailClosed is called', async () => {
-      const { fixture, component } = await mount();
+      const { fixture, component, boardState } = await mount();
       fixture.detectChanges();
-      component.handleTaskOpened(makeTask());
+      const task = makeTask({ id: 't-1', columnId: 'col-1' });
+      boardState.tasksByColumnId.set({ 'col-1': [task] });
+      component.handleTaskOpened(task);
       fixture.detectChanges();
 
       component.handleTaskDetailClosed();
@@ -685,6 +694,54 @@ describe('BoardPageComponent', () => {
       expect(component.selectedTask()).toBeNull();
       const panel = fixture.debugElement.query(By.css('app-task-detail-panel'));
       expect(panel).toBeNull();
+    });
+
+    it('selectedTask() re-projects when the open task row is updated in board state (issue #94)', async () => {
+      const { fixture, component, boardState } = await mount({
+        columnsApiResult: of([makeColumnDto({ id: 'col-1', name: 'To Do' })])
+      });
+      fixture.detectChanges();
+
+      const task = makeTask({
+        id: 't-99',
+        title: 'Watch me update',
+        content: 'old text',
+        columnId: 'col-1'
+      });
+      boardState.tasksByColumnId.set({ 'col-1': [task] });
+      component.handleTaskOpened(task);
+      fixture.detectChanges();
+      expect(component.selectedTask()?.content).toBe('old text');
+
+      // Simulate an originating-client applyLocalTaskUpdateFromDto landing
+      // on the service's tasksByColumnId — replacing the row with an
+      // updated version. The computed must re-emit immediately.
+      boardState.tasksByColumnId.set({
+        'col-1': [{ ...task, content: 'new text' }]
+      });
+      fixture.detectChanges();
+
+      expect(component.selectedTask()?.content).toBe('new text');
+      expect(component.selectedTask()?.id).toBe('t-99');
+    });
+
+    it('selectedTask() returns null when the open task is removed from board state', async () => {
+      const { fixture, component, boardState } = await mount({
+        columnsApiResult: of([makeColumnDto({ id: 'col-1', name: 'To Do' })])
+      });
+      fixture.detectChanges();
+
+      const task = makeTask({ id: 't-gone', columnId: 'col-1' });
+      boardState.tasksByColumnId.set({ 'col-1': [task] });
+      component.handleTaskOpened(task);
+      fixture.detectChanges();
+      expect(component.selectedTask()?.id).toBe('t-gone');
+
+      // Task disappears from state (e.g. ColumnDeleted-driven bucket drop).
+      boardState.tasksByColumnId.set({ 'col-1': [] });
+      fixture.detectChanges();
+
+      expect(component.selectedTask()).toBeNull();
     });
 
     it('handleAttachmentSelected dispatches into attachmentsState.startUpload (#50)', async () => {

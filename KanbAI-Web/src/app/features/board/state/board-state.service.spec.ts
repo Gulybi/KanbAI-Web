@@ -958,6 +958,257 @@ describe('BoardStateService', () => {
       expect(buckets['col-2']?.map(t => t.id)).toEqual(['t-1']);
       expect(buckets['col-2'][0].content).toBe('new content');
     });
+
+    it('equality guard — idempotent echo of the already-applied state is a silent no-op (issue #94)', () => {
+      seed();
+      // Apply a real change first so state holds `content: 'new content'`.
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-1',
+        title: 'Original',
+        content: 'new content',
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      const afterFirst = service.tasksByColumnId();
+
+      // Re-emit the exact same post-state — equality guard must skip setState
+      // so the signal reference is unchanged (no downstream re-render).
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-1',
+        title: 'Original',
+        content: 'new content',
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()).toBe(afterFirst);
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #94 — description save/clear render the freshest value on the
+  // originating client (apply-local-* entry points + equality guard)
+  // ----------------------------------------------------------------------
+
+  describe('applyLocalTaskUpdateFromDto() (issue #94)', () => {
+    const makeTaskDto = (partial?: Partial<TaskResponseDto>): TaskResponseDto => ({
+      id: 't-1',
+      title: 'Original',
+      content: 'updated content',
+      taskOrder: 0,
+      columnId: 'col-1',
+      assignedId: null,
+      createdAt: '2026-05-08T00:00:00Z',
+      updatedAt: '2026-05-08T00:00:00Z',
+      ...partial
+    });
+
+    const seedBoardAndTask = (content: string | null = 'old content') => {
+      service.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-1',
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-2',
+        name: 'Doing',
+        colorCode: null,
+        columnOrder: 2,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-1',
+        title: 'Original',
+        content,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+    };
+
+    it('replaces the task row in its owner bucket with the projected DTO', () => {
+      seedBoardAndTask('old content');
+      service.applyLocalTaskUpdateFromDto(makeTaskDto({ content: 'updated content' }));
+      const stored = service.tasksByColumnId()['col-1'][0];
+      expect(stored.content).toBe('updated content');
+      expect(stored).toEqual({
+        id: 't-1',
+        title: 'Original',
+        content: 'updated content',
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null
+      });
+      // createdAt / updatedAt are dropped by the projection.
+      expect(stored as unknown as { createdAt?: string }).not.toHaveProperty('createdAt');
+      expect(stored as unknown as { updatedAt?: string }).not.toHaveProperty('updatedAt');
+    });
+
+    it('moves the task across buckets if the DTO reports a different columnId (defensive)', () => {
+      seedBoardAndTask('old content');
+      service.applyLocalTaskUpdateFromDto(
+        makeTaskDto({ content: 'updated content', columnId: 'col-2' })
+      );
+      const buckets = service.tasksByColumnId();
+      expect(buckets['col-1']?.map(t => t.id)).toEqual([]);
+      expect(buckets['col-2']?.map(t => t.id)).toEqual(['t-1']);
+      expect(buckets['col-2'][0].content).toBe('updated content');
+    });
+
+    it('is a silent no-op when currentProjectId is null', () => {
+      // No enterBoard — currentProjectId is null.
+      expect(() =>
+        service.applyLocalTaskUpdateFromDto(makeTaskDto())
+      ).not.toThrow();
+      expect(service.tasksByColumnId()).toEqual({});
+    });
+
+    it('is a silent no-op when the task id is not present in any bucket', () => {
+      seedBoardAndTask('old content');
+      const before = service.tasksByColumnId();
+      service.applyLocalTaskUpdateFromDto(makeTaskDto({ id: 't-unknown' }));
+      expect(service.tasksByColumnId()).toBe(before);
+    });
+
+    it('is a safe no-op on a null/undefined dto (defensive)', () => {
+      seedBoardAndTask('old content');
+      expect(() =>
+        service.applyLocalTaskUpdateFromDto(null as unknown as TaskResponseDto)
+      ).not.toThrow();
+      expect(() =>
+        service.applyLocalTaskUpdateFromDto(undefined as unknown as TaskResponseDto)
+      ).not.toThrow();
+      expect(service.tasksByColumnId()['col-1'][0].content).toBe('old content');
+    });
+
+    it('equality guard — DTO that projects to the current row is a silent no-op (no setState)', () => {
+      seedBoardAndTask('old content');
+      const before = service.tasksByColumnId();
+      // DTO projects to the exact same BoardTask fields as already in state.
+      service.applyLocalTaskUpdateFromDto(
+        makeTaskDto({ content: 'old content' })
+      );
+      expect(service.tasksByColumnId()).toBe(before);
+    });
+
+    it('apply-local then SignalR echo of the same post-state is absorbed (no second setState)', () => {
+      seedBoardAndTask('old content');
+
+      // Originating client's HTTP-success apply — this IS a net change so
+      // setState fires (reference changes).
+      service.applyLocalTaskUpdateFromDto(
+        makeTaskDto({ content: 'new content' })
+      );
+      const afterApply = service.tasksByColumnId();
+      expect(afterApply['col-1'][0].content).toBe('new content');
+
+      // SignalR echo of the same post-state — equality guard skips setState.
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-1',
+        title: 'Original',
+        content: 'new content',
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()).toBe(afterApply);
+    });
+  });
+
+  describe('applyLocalTaskDescriptionCleared() (issue #94)', () => {
+    const seedBoardWithTaskHavingContent = (content: string | null = 'old content') => {
+      service.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-1',
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-1',
+        title: 'Original',
+        content,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: 'user-1',
+        createdAt: '',
+        updatedAt: ''
+      });
+    };
+
+    it('flips content to null while leaving other fields unchanged', () => {
+      seedBoardWithTaskHavingContent('old content');
+      service.applyLocalTaskDescriptionCleared('t-1');
+      const stored = service.tasksByColumnId()['col-1'][0];
+      expect(stored).toEqual({
+        id: 't-1',
+        title: 'Original',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: 'user-1'
+      });
+    });
+
+    it('is a silent no-op when currentProjectId is null', () => {
+      // No enterBoard.
+      expect(() => service.applyLocalTaskDescriptionCleared('t-1')).not.toThrow();
+      expect(service.tasksByColumnId()).toEqual({});
+    });
+
+    it('is a silent no-op when the task id is not present in any bucket', () => {
+      seedBoardWithTaskHavingContent('old content');
+      const before = service.tasksByColumnId();
+      service.applyLocalTaskDescriptionCleared('t-missing');
+      expect(service.tasksByColumnId()).toBe(before);
+    });
+
+    it('equality guard — clearing an already-null content is a silent no-op (no setState)', () => {
+      seedBoardWithTaskHavingContent(null);
+      const before = service.tasksByColumnId();
+      service.applyLocalTaskDescriptionCleared('t-1');
+      expect(service.tasksByColumnId()).toBe(before);
+    });
+
+    it('apply-local-clear then SignalR echo with content:null is absorbed as a no-op', () => {
+      seedBoardWithTaskHavingContent('old content');
+
+      service.applyLocalTaskDescriptionCleared('t-1');
+      const afterClear = service.tasksByColumnId();
+      expect(afterClear['col-1'][0].content).toBeNull();
+
+      // Echo of the client's own clear.
+      signalRMock.emit<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated, {
+        id: 't-1',
+        title: 'Original',
+        content: null,
+        taskOrder: 0,
+        columnId: 'col-1',
+        assignedId: 'user-1',
+        createdAt: '',
+        updatedAt: ''
+      });
+      expect(service.tasksByColumnId()).toBe(afterClear);
+    });
   });
 
   describe('applyCreatedColumn() (issue #77)', () => {
