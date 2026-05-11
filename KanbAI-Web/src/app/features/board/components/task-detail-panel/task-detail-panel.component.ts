@@ -140,13 +140,25 @@ export class TaskDetailPanelComponent {
     return `Processing ${active.file.name}`;
   });
 
+  /**
+   * Cursor used by the constructor effect to gate hydrate calls on genuine
+   * task-id transitions. Same-id re-emissions of the `task` input — for
+   * example when `BoardStateService.onTaskUpdated` rebuilds the
+   * `BoardTask` reference in response to an unrelated `TaskUpdated` event —
+   * must not re-trigger hydration. Panel-local scope: a fresh mount for a
+   * re-opened panel starts with `null`, so the effect fires once on mount.
+   */
+  private lastHydratedTaskId: string | null = null;
+
   constructor() {
-    // Hydrate the completed-attachments list whenever the open task changes.
-    // `hydrateCompletedForTask` is idempotent and dedupes on phase==='loading'.
+    // Hydrate once per taskId transition. Same-id re-emissions — e.g. from
+    // unrelated TaskUpdated echoes that rebuild the BoardTask reference —
+    // are ignored. Explicit Retry bypasses this gate and fetches unconditionally.
     effect(() => {
       const id = this.task().id;
-      if (id) {
-        this.attachmentsState.hydrateCompletedForTask(id);
+      if (id && id !== this.lastHydratedTaskId) {
+        this.lastHydratedTaskId = id;
+        this.attachmentsState.hydrateCompletedForTask(id, 'effect');
       }
     });
   }
@@ -177,7 +189,7 @@ export class TaskDetailPanelComponent {
   }
 
   handleRetryListFetch(): void {
-    this.attachmentsState.hydrateCompletedForTask(this.task().id);
+    this.attachmentsState.hydrateCompletedForTask(this.task().id, 'retry');
   }
 
   /** Re-emits the child's 404 signal up to the board page. */
