@@ -135,10 +135,43 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly dragAnnouncement = signal<string>('');
 
   /**
-   * The task whose detail drawer is currently open, or null when the
-   * drawer is closed. Set by `handleTaskOpened`, cleared by `handleTaskDetailClosed`.
+   * Id of the task whose detail drawer is currently open, or null when
+   * the drawer is closed. Private — consumers read through the
+   * {@link selectedTask} projection below.
    */
-  readonly selectedTask = signal<BoardTask | null>(null);
+  private readonly selectedTaskId = signal<string | null>(null);
+
+  /**
+   * The task whose detail drawer is currently open, or null when the
+   * drawer is closed. Live projection off `boardState.tasksByColumnId()`
+   * keyed by {@link selectedTaskId}. When the open task's row is mutated
+   * (either by a remote `TaskUpdated` echo or the originating client's
+   * own save / clear via `applyLocalTaskUpdateFromDto` /
+   * `applyLocalTaskDescriptionCleared`), this computed re-emits and the
+   * template's `@if (selectedTask(); as task)` binding re-fires, which
+   * re-fires the `[task]` input into `TaskDetailPanelComponent` and
+   * `TaskDescriptionSectionComponent`, which re-derives `readDisplay`.
+   * That is the mechanism that makes the freshest `content` reach the
+   * rendered read mode within the same microtask as the save's `next`
+   * handler (issue #94).
+   */
+  readonly selectedTask: Signal<BoardTask | null> = computed(() => {
+    const id = this.selectedTaskId();
+    if (id === null) {
+      return null;
+    }
+    const buckets = this.boardState.tasksByColumnId();
+    for (const bucket of Object.values(buckets)) {
+      const found = bucket.find(t => t.id === id);
+      if (found) {
+        return found;
+      }
+    }
+    // Task was removed from state (ColumnDeleted, TaskMoved to a bucket
+    // we don't track, etc.) — panel collapses. The 404 toast path is
+    // separate and still runs on explicit 404 handling (unchanged by #94).
+    return null;
+  });
 
   /**
    * 404 toast surfaced when description save/clear hits a deleted task
@@ -295,12 +328,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   /** Invoked by `BoardColumnComponent` when a task card is activated. */
   handleTaskOpened(task: BoardTask): void {
-    this.selectedTask.set(task);
+    this.selectedTaskId.set(task.id);
   }
 
   /** Invoked by `TaskDetailPanelComponent.panelClosed`. */
   handleTaskDetailClosed(): void {
-    this.selectedTask.set(null);
+    this.selectedTaskId.set(null);
   }
 
   /**
@@ -308,7 +341,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
    * the panel and surfaces the "This task no longer exists" toast.
    */
   handleTaskNotFound(): void {
-    this.selectedTask.set(null);
+    this.selectedTaskId.set(null);
     this.taskNotFoundToast.set({
       message: TASK_DESCRIPTION_COPY.TOAST_TASK_NOT_FOUND
     });

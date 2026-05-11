@@ -11,6 +11,7 @@ import {
   TASK_DESCRIPTION_MAX_LENGTH
 } from './task-description-copy';
 import { BoardTask } from '../../state/board-state.model';
+import { BoardStateService } from '../../state/board-state.service';
 import { TasksApiService } from '../../services/tasks-api.service';
 import { TaskResponseDto } from '../../models/task.model';
 
@@ -50,6 +51,11 @@ interface DialogMock {
   _closed: Subject<true | undefined>;
 }
 
+interface BoardStateMock {
+  applyLocalTaskUpdateFromDto: ReturnType<typeof vi.fn>;
+  applyLocalTaskDescriptionCleared: ReturnType<typeof vi.fn>;
+}
+
 function makeDialogMock(): DialogMock {
   const closed = new Subject<true | undefined>();
   return {
@@ -63,6 +69,7 @@ describe('TaskDescriptionSectionComponent', () => {
   let component: TaskDescriptionSectionComponent;
   let tasksApi: TasksApiMock;
   let dialog: DialogMock;
+  let boardState: BoardStateMock;
   let notFoundCount: number;
 
   beforeEach(async () => {
@@ -71,13 +78,18 @@ describe('TaskDescriptionSectionComponent', () => {
       clearTaskDescription: vi.fn(() => of(void 0))
     };
     dialog = makeDialogMock();
+    boardState = {
+      applyLocalTaskUpdateFromDto: vi.fn(),
+      applyLocalTaskDescriptionCleared: vi.fn()
+    };
     notFoundCount = 0;
 
     await TestBed.configureTestingModule({
       imports: [TaskDescriptionSectionComponent],
       providers: [
         { provide: TasksApiService, useValue: tasksApi },
-        { provide: Dialog, useValue: dialog }
+        { provide: Dialog, useValue: dialog },
+        { provide: BoardStateService, useValue: boardState }
       ]
     }).compileComponents();
 
@@ -258,6 +270,47 @@ describe('TaskDescriptionSectionComponent', () => {
       ).toBeNull();
     });
 
+    it('200: calls boardState.applyLocalTaskUpdateFromDto with the returned DTO (issue #94)', () => {
+      const returnedDto = makeTaskDto({ content: 'authoritative new' });
+      tasksApi.updateTaskDescription.mockReturnValueOnce(of(returnedDto));
+
+      const ta = openEditor('hi');
+      ta.value = 'authoritative new';
+      ta.dispatchEvent(new Event('input'));
+      fixture.debugElement
+        .query(By.css('.task-description__save'))
+        .nativeElement.click();
+      fixture.detectChanges();
+
+      expect(boardState.applyLocalTaskUpdateFromDto).toHaveBeenCalledTimes(1);
+      expect(boardState.applyLocalTaskUpdateFromDto).toHaveBeenCalledWith(returnedDto);
+    });
+
+    it('200: applyLocalTaskUpdateFromDto fires AFTER exitEditMode flips mode to read (issue #94)', () => {
+      // Ordering guarantee: the remote-update effect early-exits when
+      // mode !== 'edit'. If the state apply fired before exitEditMode, the
+      // effect would trip the "updated by someone else" banner on the
+      // user's own save. Verify by reading component.mode() from inside
+      // the spy body.
+      let modeAtApplyTime: string | null = null;
+      boardState.applyLocalTaskUpdateFromDto.mockImplementation(() => {
+        modeAtApplyTime = (component as unknown as { mode: () => string }).mode();
+      });
+      tasksApi.updateTaskDescription.mockReturnValueOnce(
+        of(makeTaskDto({ content: 'x' }))
+      );
+
+      const ta = openEditor('hi');
+      ta.value = 'x';
+      ta.dispatchEvent(new Event('input'));
+      fixture.debugElement
+        .query(By.css('.task-description__save'))
+        .nativeElement.click();
+      fixture.detectChanges();
+
+      expect(modeAtApplyTime).toBe('read');
+    });
+
     it('renders the first server-errors string on 400', () => {
       tasksApi.updateTaskDescription.mockReturnValueOnce(
         throwError(
@@ -280,6 +333,11 @@ describe('TaskDescriptionSectionComponent', () => {
         By.css('.task-description__error')
       );
       expect(err.nativeElement.textContent).toContain('server: too long');
+      // Editor stays open and no state mutation fires on error (issue #94).
+      expect(
+        fixture.debugElement.query(By.css('.task-description__editor'))
+      ).toBeTruthy();
+      expect(boardState.applyLocalTaskUpdateFromDto).not.toHaveBeenCalled();
     });
 
     it('falls back to generic save copy on 400 with empty errors[]', () => {
@@ -326,6 +384,7 @@ describe('TaskDescriptionSectionComponent', () => {
       expect(err.nativeElement.textContent).toContain(
         TASK_DESCRIPTION_COPY.INLINE_ERROR_PERMISSION
       );
+      expect(boardState.applyLocalTaskUpdateFromDto).not.toHaveBeenCalled();
     });
 
     it('emits taskNotFound on 404 and does not mutate mode itself', () => {
@@ -345,6 +404,7 @@ describe('TaskDescriptionSectionComponent', () => {
       expect(
         fixture.debugElement.query(By.css('.task-description__editor'))
       ).toBeTruthy();
+      expect(boardState.applyLocalTaskUpdateFromDto).not.toHaveBeenCalled();
     });
 
     it('maps status=0 to network copy', () => {
@@ -365,6 +425,7 @@ describe('TaskDescriptionSectionComponent', () => {
       expect(err.nativeElement.textContent).toContain(
         TASK_DESCRIPTION_COPY.INLINE_ERROR_NETWORK
       );
+      expect(boardState.applyLocalTaskUpdateFromDto).not.toHaveBeenCalled();
     });
   });
 
@@ -420,7 +481,7 @@ describe('TaskDescriptionSectionComponent', () => {
       expect(tasksApi.clearTaskDescription).not.toHaveBeenCalled();
     });
 
-    it('confirming fires DELETE; 204 does not mutate state (SignalR echo does)', () => {
+    it('confirming fires DELETE; 204 applies the local clear via BoardStateService (issue #94)', () => {
       fixture.componentRef.setInput('task', makeTask({ content: 'hi' }));
       fixture.detectChanges();
 
@@ -434,9 +495,11 @@ describe('TaskDescriptionSectionComponent', () => {
       clearBtn.click();
       dialog._closed.next(true);
       expect(tasksApi.clearTaskDescription).toHaveBeenCalledWith('t-1');
+      expect(boardState.applyLocalTaskDescriptionCleared).toHaveBeenCalledTimes(1);
+      expect(boardState.applyLocalTaskDescriptionCleared).toHaveBeenCalledWith('t-1');
     });
 
-    it('404 on clear emits taskNotFound', () => {
+    it('404 on clear emits taskNotFound and does not apply a local clear (issue #94)', () => {
       tasksApi.clearTaskDescription.mockReturnValueOnce(
         throwError(() => new HttpErrorResponse({ status: 404 }))
       );
@@ -452,6 +515,43 @@ describe('TaskDescriptionSectionComponent', () => {
       clearBtn.click();
       dialog._closed.next(true);
       expect(notFoundCount).toBe(1);
+      expect(boardState.applyLocalTaskDescriptionCleared).not.toHaveBeenCalled();
+    });
+
+    it('403 on clear surfaces permission copy and does not apply a local clear (issue #94)', () => {
+      tasksApi.clearTaskDescription.mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 403 }))
+      );
+      fixture.componentRef.setInput('task', makeTask({ content: 'hi' }));
+      fixture.detectChanges();
+      const clearBtn = (
+        Array.from(
+          fixture.nativeElement.querySelectorAll('button')
+        ) as HTMLButtonElement[]
+      ).find(
+        b => b.getAttribute('aria-label') === TASK_DESCRIPTION_COPY.CLEAR_BUTTON_LABEL
+      ) as HTMLButtonElement;
+      clearBtn.click();
+      dialog._closed.next(true);
+      expect(boardState.applyLocalTaskDescriptionCleared).not.toHaveBeenCalled();
+    });
+
+    it('status=0 on clear surfaces network copy and does not apply a local clear (issue #94)', () => {
+      tasksApi.clearTaskDescription.mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 0 }))
+      );
+      fixture.componentRef.setInput('task', makeTask({ content: 'hi' }));
+      fixture.detectChanges();
+      const clearBtn = (
+        Array.from(
+          fixture.nativeElement.querySelectorAll('button')
+        ) as HTMLButtonElement[]
+      ).find(
+        b => b.getAttribute('aria-label') === TASK_DESCRIPTION_COPY.CLEAR_BUTTON_LABEL
+      ) as HTMLButtonElement;
+      clearBtn.click();
+      dialog._closed.next(true);
+      expect(boardState.applyLocalTaskDescriptionCleared).not.toHaveBeenCalled();
     });
   });
 
