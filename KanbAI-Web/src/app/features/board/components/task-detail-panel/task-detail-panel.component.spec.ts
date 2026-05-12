@@ -409,4 +409,50 @@ describe('TaskDetailPanelComponent', () => {
       expect(component.uploadLiveMessage()).toBe('');
     });
   });
+
+  // ------------------------------------------------------------------
+  // Destructive footer: "Delete task" button (issue #96)
+  // ------------------------------------------------------------------
+  describe('Destructive footer (issue #96)', () => {
+    it('renders the destructive zone with a heading and a Delete task button', () => {
+      const zone = fixture.debugElement.query(
+        By.css('.task-detail-panel__destructive-zone')
+      );
+      expect(zone).toBeTruthy();
+      const button = zone.query(By.css('.task-detail-panel__delete-btn'));
+      expect(button).toBeTruthy();
+      expect(button.nativeElement.getAttribute('aria-label')).toBe('Delete task');
+      // The visible label is "Delete task" — whitespace-trimmed to tolerate
+      // surrounding whitespace in the template.
+      expect(button.nativeElement.textContent.trim()).toContain('Delete task');
+    });
+
+    it('destructive footer is rendered below the description + attachment sections', () => {
+      // Tech spec AC: the Delete button is visibly separated from and below
+      // the description section's Save/Cancel controls, so it cannot be
+      // mis-clicked during a description edit. Verify DOM order.
+      const body = fixture.debugElement.query(By.css('.task-detail-panel__body'));
+      const children = Array.from(
+        body.nativeElement.children as HTMLCollection
+      ) as HTMLElement[];
+      const descIdx = children.findIndex(c => c.tagName.toLowerCase() === 'app-task-description-section');
+      const zoneIdx = children.findIndex(c =>
+        c.classList.contains('task-detail-panel__destructive-zone')
+      );
+      expect(descIdx).toBeGreaterThanOrEqual(0);
+      expect(zoneIdx).toBeGreaterThan(descIdx);
+    });
+
+    it('clicking Delete task emits deleteTaskRequested with the current task', () => {
+      const emitted: BoardTask[] = [];
+      component.deleteTaskRequested.subscribe(t => emitted.push(t));
+      const button = fixture.debugElement.query(
+        By.css('.task-detail-panel__delete-btn')
+      );
+      button.nativeElement.click();
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].id).toBe('t-1');
+      expect(emitted[0].title).toBe('Design login page');
+    });
+  });
 });

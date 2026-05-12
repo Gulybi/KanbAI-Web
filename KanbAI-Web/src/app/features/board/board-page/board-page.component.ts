@@ -8,12 +8,14 @@ import {
   Signal,
   ViewChild,
   computed,
+  effect,
   inject,
   signal
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 
 import { BoardStateService } from '../state/board-state.service';
@@ -31,11 +33,32 @@ import {
 import { ColumnResponseDto, CreateColumnDto } from '../models/column.model';
 import { BoardColumnComponent } from '../components/board-column/board-column.component';
 import { BoardAddColumnComponent } from '../components/board-add-column/board-add-column.component';
+import { BoardHeaderComponent } from '../components/board-header/board-header.component';
 import { TaskDetailPanelComponent } from '../components/task-detail-panel/task-detail-panel.component';
 import { TaskNotFoundToastComponent } from '../components/task-not-found-toast/task-not-found-toast.component';
 import type { DropzoneFileSelectedEvent } from '../../attachments/models/dropzone.model';
 import { AttachmentsStateService } from '../../attachments/state/attachments-state.service';
 import { TASK_DESCRIPTION_COPY } from '../components/task-description-section/task-description-copy';
+import { ProjectStateService } from '../../projects/state/project-state.service';
+import { ProjectsApiService } from '../../projects/services/projects-api.service';
+import { ProjectSummary } from '../../projects/models/project.model';
+import { DeleteProjectConfirmDialogComponent } from '../../projects/components/delete-project-confirm-dialog/delete-project-confirm-dialog.component';
+import {
+  DeleteProjectConfirmData,
+  DeleteProjectConfirmResult
+} from '../../projects/components/delete-project-confirm-dialog/delete-project-confirm-dialog.types';
+import { DELETE_PROJECT_DISABLED_COPY } from '../../projects/constants/delete-project-copy';
+import { ToastService } from '../../../core/services/toast.service';
+import { DeleteColumnConfirmDialogComponent } from '../components/delete-column-confirm-dialog/delete-column-confirm-dialog.component';
+import {
+  DeleteColumnConfirmData,
+  DeleteColumnConfirmResult
+} from '../components/delete-column-confirm-dialog/delete-column-confirm-dialog.types';
+import { DeleteTaskConfirmDialogComponent } from '../components/delete-task-confirm-dialog/delete-task-confirm-dialog.component';
+import {
+  DeleteTaskConfirmData,
+  DeleteTaskConfirmResult
+} from '../components/delete-task-confirm-dialog/delete-task-confirm-dialog.types';
 
 /** Auto-dismiss duration (ms) for the inline move-error strip. */
 const MOVE_ERROR_AUTO_DISMISS_MS = 5000;
@@ -69,6 +92,7 @@ const EMPTY_DRAFT: TaskDraftState = {
     DragDropModule,
     BoardColumnComponent,
     BoardAddColumnComponent,
+    BoardHeaderComponent,
     TaskDetailPanelComponent,
     TaskNotFoundToastComponent
   ],
@@ -78,11 +102,16 @@ const EMPTY_DRAFT: TaskDraftState = {
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly boardState = inject(BoardStateService);
   private readonly columnsApi = inject(ColumnsApiService);
   private readonly tasksApi = inject(TasksApiService);
   private readonly attachmentsState = inject(AttachmentsStateService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly dialog = inject(Dialog);
+  private readonly projectState = inject(ProjectStateService);
+  private readonly projectsApi = inject(ProjectsApiService);
+  private readonly toastService = inject(ToastService);
 
   /** Read-through from the state service. */
   readonly columns: Signal<BoardColumn[]> = this.boardState.columns;
@@ -233,6 +262,61 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   /** Pending auto-dismiss timer for `moveError`. */
   private moveErrorTimerId: ReturnType<typeof setTimeout> | null = null;
+
+  // ---------------- Issue #96 — delete-project flow ----------------
+
+  /**
+   * The `ProjectSummary` for the currently-viewed board, or null during
+   * boot or if the user no longer has access. Derived from the dashboard-
+   * scope cache — no extra HTTP.
+   */
+  readonly currentProject: Signal<ProjectSummary | null> = computed(() => {
+    const id = this.boardState.currentProjectId();
+    if (id === null) {
+      return null;
+    }
+    return this.projectState.projects().find(p => p.id === id) ?? null;
+  });
+
+  private readonly deleteProjectSubmitting = signal<boolean>(false);
+  private readonly deleteProjectError = signal<string | null>(null);
+
+  // Delete-column dialog state (issue #96 sub-feature B).
+  private readonly deleteColumnSubmitting = signal<boolean>(false);
+  private readonly deleteColumnError = signal<string | null>(null);
+
+  // Delete-task dialog state (issue #96 sub-feature C).
+  private readonly deleteTaskSubmitting = signal<boolean>(false);
+  private readonly deleteTaskError = signal<string | null>(null);
+
+  constructor() {
+    // Remote-delete navigation for the currently-viewed board (issue #96).
+    // Fires when the current project id disappears from the dashboard
+    // cache (SignalR `ProjectDeleted` → `ProjectStateService.onProjectDeleted`
+    // removes it). Gated on `hasLoaded` so the pre-hydration empty list
+    // does not trigger a spurious bounce.
+    let navigatedForCurrent: string | null = null;
+    effect(() => {
+      const hasLoaded = this.projectState.hasLoaded();
+      const activeId = this.boardState.currentProjectId();
+      if (!hasLoaded || activeId === null) {
+        return;
+      }
+      const stillPresent = this.projectState
+        .projects()
+        .some(p => p.id === activeId);
+      if (stillPresent || navigatedForCurrent === activeId) {
+        return;
+      }
+      navigatedForCurrent = activeId;
+      // Remote delete — navigate back and surface the info toast.
+      void this.router.navigate(['/dashboard']);
+      this.toastService.show(
+        'This project was deleted by another member',
+        'info'
+      );
+    });
+  }
 
   ngOnInit(): void {
     const projectId = this.route.snapshot.paramMap.get('projectId');
@@ -655,5 +739,327 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   private announce(text: string): void {
     this.dragAnnouncement.set(text);
+  }
+
+  // ---------------- Issue #96 — delete-project orchestration ----------------
+
+  /**
+   * Entry point bound to `BoardHeaderComponent.deleteProjectRequested`. Opens
+   * the destructive-confirm dialog and wires the child's `confirmClicked` to
+   * the HTTP submit. Mirrors `DashboardPageComponent.openDeleteProjectDialog`
+   * — the only difference is that success navigates back to `/dashboard`
+   * BEFORE firing the toast so the live-region announcement lands on the
+   * destination page.
+   */
+  openDeleteProjectDialog(): void {
+    const project = this.currentProject();
+    if (project === null) {
+      return;
+    }
+    this.deleteProjectSubmitting.set(false);
+    this.deleteProjectError.set(null);
+
+    const ref = this.dialog.open<
+      DeleteProjectConfirmResult,
+      DeleteProjectConfirmData,
+      DeleteProjectConfirmDialogComponent
+    >(DeleteProjectConfirmDialogComponent, {
+      data: { projectName: project.name },
+      ariaLabelledBy: 'delete-project-confirm-heading',
+      autoFocus: 'first-tabbable',
+      restoreFocus: true,
+      disableClose: false,
+      panelClass: 'delete-project-confirm-panel',
+      backdropClass: 'delete-project-confirm-backdrop'
+    });
+
+    const sub = ref.componentInstance?.confirmClicked.subscribe(() =>
+      this.submitDeleteProject(project, ref)
+    );
+    ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      sub?.unsubscribe();
+    });
+
+    this.syncDeleteProjectInputs(ref);
+  }
+
+  private syncDeleteProjectInputs(
+    ref: DialogRef<DeleteProjectConfirmResult, DeleteProjectConfirmDialogComponent>
+  ): void {
+    ref.componentRef?.setInput('submitting', this.deleteProjectSubmitting());
+    ref.componentRef?.setInput('inlineError', this.deleteProjectError());
+  }
+
+  private submitDeleteProject(
+    project: ProjectSummary,
+    ref: DialogRef<DeleteProjectConfirmResult, DeleteProjectConfirmDialogComponent>
+  ): void {
+    if (this.deleteProjectSubmitting()) {
+      return;
+    }
+    this.deleteProjectSubmitting.set(true);
+    this.deleteProjectError.set(null);
+    this.syncDeleteProjectInputs(ref);
+
+    this.projectsApi
+      .deleteProject(project.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.onBoardDeleteSuccess(project, ref),
+        error: err => this.onBoardDeleteError(project, err, ref)
+      });
+  }
+
+  private onBoardDeleteSuccess(
+    project: ProjectSummary,
+    ref: DialogRef<DeleteProjectConfirmResult, DeleteProjectConfirmDialogComponent>
+  ): void {
+    this.deleteProjectSubmitting.set(false);
+    this.projectState.applyDeletedProject(project.id);
+    ref.close(true);
+    // Navigate FIRST so the toast + announcement land on the dashboard.
+    void this.router.navigate(['/dashboard']).then(() => {
+      this.toastService.show(`Project '${project.name}' was deleted`);
+      this.toastService.announce('Project deleted');
+    });
+  }
+
+  private onBoardDeleteError(
+    project: ProjectSummary,
+    err: unknown,
+    ref: DialogRef<DeleteProjectConfirmResult, DeleteProjectConfirmDialogComponent>
+  ): void {
+    this.deleteProjectSubmitting.set(false);
+    const status = err instanceof HttpErrorResponse ? err.status : null;
+
+    if (status === 404) {
+      this.onBoardDeleteSuccess(project, ref);
+      return;
+    }
+    if (status === 403) {
+      ref.close(undefined);
+      this.toastService.show(DELETE_PROJECT_DISABLED_COPY, 'info');
+      return;
+    }
+    if (status === 0) {
+      this.deleteProjectError.set("Couldn't reach the server — try again");
+      this.syncDeleteProjectInputs(ref);
+      return;
+    }
+    this.deleteProjectError.set("Couldn't delete project — please try again");
+    this.syncDeleteProjectInputs(ref);
+  }
+
+  // ---------------- Issue #96 — delete-column orchestration ----------------
+
+  /** Entry point bound to `BoardColumnComponent.deleteColumnRequested`. */
+  openDeleteColumnDialog(column: BoardColumn): void {
+    this.deleteColumnSubmitting.set(false);
+    this.deleteColumnError.set(null);
+
+    const taskCount = (this.tasksByColumnId()[column.id] ?? []).length;
+
+    const ref = this.dialog.open<
+      DeleteColumnConfirmResult,
+      DeleteColumnConfirmData,
+      DeleteColumnConfirmDialogComponent
+    >(DeleteColumnConfirmDialogComponent, {
+      data: { columnName: column.name, taskCount },
+      ariaLabelledBy: 'delete-column-confirm-heading',
+      autoFocus: 'first-tabbable',
+      restoreFocus: true,
+      disableClose: false,
+      panelClass: 'delete-column-confirm-panel',
+      backdropClass: 'delete-column-confirm-backdrop'
+    });
+
+    const sub = ref.componentInstance?.confirmClicked.subscribe(() =>
+      this.submitDeleteColumn(column, ref)
+    );
+    ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      sub?.unsubscribe();
+    });
+
+    this.syncDeleteColumnInputs(ref);
+  }
+
+  private syncDeleteColumnInputs(
+    ref: DialogRef<DeleteColumnConfirmResult, DeleteColumnConfirmDialogComponent>
+  ): void {
+    ref.componentRef?.setInput('submitting', this.deleteColumnSubmitting());
+    ref.componentRef?.setInput('inlineError', this.deleteColumnError());
+  }
+
+  private submitDeleteColumn(
+    column: BoardColumn,
+    ref: DialogRef<DeleteColumnConfirmResult, DeleteColumnConfirmDialogComponent>
+  ): void {
+    if (this.deleteColumnSubmitting()) {
+      return;
+    }
+    this.deleteColumnSubmitting.set(true);
+    this.deleteColumnError.set(null);
+    this.syncDeleteColumnInputs(ref);
+
+    this.boardState
+      .deleteColumn(column.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.onColumnDeleteSuccess(column, ref),
+        error: err => this.onColumnDeleteError(column, err, ref)
+      });
+  }
+
+  private onColumnDeleteSuccess(
+    column: BoardColumn,
+    ref: DialogRef<DeleteColumnConfirmResult, DeleteColumnConfirmDialogComponent>
+  ): void {
+    this.deleteColumnSubmitting.set(false);
+    // If the currently-open task lived in the deleted column, close the panel.
+    // Idempotent when no task is open — see handleTaskDetailClosed.
+    const openTask = this.selectedTask();
+    if (openTask !== null && openTask.columnId === column.id) {
+      this.handleTaskDetailClosed();
+    }
+    ref.close(true);
+    this.toastService.show(`Column '${column.name}' was deleted`);
+    this.toastService.announce('Column deleted');
+  }
+
+  private onColumnDeleteError(
+    column: BoardColumn,
+    err: unknown,
+    ref: DialogRef<DeleteColumnConfirmResult, DeleteColumnConfirmDialogComponent>
+  ): void {
+    this.deleteColumnSubmitting.set(false);
+    const status = err instanceof HttpErrorResponse ? err.status : null;
+
+    if (status === 404) {
+      // Already gone server-side: apply the local cascade and run success.
+      this.boardState.applyDeletedColumn(column.id);
+      this.onColumnDeleteSuccess(column, ref);
+      return;
+    }
+    if (status === 403) {
+      ref.close(undefined);
+      this.toastService.show(
+        "You don't have permission to delete this column",
+        'info'
+      );
+      return;
+    }
+    if (status === 0) {
+      this.deleteColumnError.set("Couldn't reach the server — try again");
+      this.syncDeleteColumnInputs(ref);
+      return;
+    }
+    this.deleteColumnError.set("Couldn't delete column — please try again");
+    this.syncDeleteColumnInputs(ref);
+  }
+
+  // ---------------- Issue #96 — delete-task orchestration ----------------
+
+  /** Entry point bound to `TaskDetailPanelComponent.deleteTaskRequested`. */
+  openDeleteTaskDialog(task: BoardTask): void {
+    this.deleteTaskSubmitting.set(false);
+    this.deleteTaskError.set(null);
+
+    const ref = this.dialog.open<
+      DeleteTaskConfirmResult,
+      DeleteTaskConfirmData,
+      DeleteTaskConfirmDialogComponent
+    >(DeleteTaskConfirmDialogComponent, {
+      data: { taskTitle: task.title },
+      ariaLabelledBy: 'delete-task-confirm-heading',
+      autoFocus: 'first-tabbable',
+      restoreFocus: true,
+      disableClose: false,
+      panelClass: 'delete-task-confirm-panel',
+      backdropClass: 'delete-task-confirm-backdrop'
+    });
+
+    const sub = ref.componentInstance?.confirmClicked.subscribe(() =>
+      this.submitDeleteTask(task, ref)
+    );
+    ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      sub?.unsubscribe();
+    });
+
+    this.syncDeleteTaskInputs(ref);
+  }
+
+  private syncDeleteTaskInputs(
+    ref: DialogRef<DeleteTaskConfirmResult, DeleteTaskConfirmDialogComponent>
+  ): void {
+    ref.componentRef?.setInput('submitting', this.deleteTaskSubmitting());
+    ref.componentRef?.setInput('inlineError', this.deleteTaskError());
+  }
+
+  private submitDeleteTask(
+    task: BoardTask,
+    ref: DialogRef<DeleteTaskConfirmResult, DeleteTaskConfirmDialogComponent>
+  ): void {
+    if (this.deleteTaskSubmitting()) {
+      return;
+    }
+    this.deleteTaskSubmitting.set(true);
+    this.deleteTaskError.set(null);
+    this.syncDeleteTaskInputs(ref);
+
+    this.boardState
+      .deleteTask(task.id, task.columnId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.onTaskDeleteSuccess(task, ref),
+        error: err => this.onTaskDeleteError(task, err, ref)
+      });
+  }
+
+  private onTaskDeleteSuccess(
+    task: BoardTask,
+    ref: DialogRef<DeleteTaskConfirmResult, DeleteTaskConfirmDialogComponent>
+  ): void {
+    this.deleteTaskSubmitting.set(false);
+    // Close the detail panel first — the card and panel should not linger
+    // over deleted state. `selectedTask` also collapses automatically once
+    // the task is gone from state, but the explicit call is belt-and-braces
+    // per tech spec §C.5.
+    this.handleTaskDetailClosed();
+    ref.close(true);
+    this.toastService.show(`Task '${task.title}' was deleted`);
+    this.toastService.announce('Task deleted');
+  }
+
+  private onTaskDeleteError(
+    task: BoardTask,
+    err: unknown,
+    ref: DialogRef<DeleteTaskConfirmResult, DeleteTaskConfirmDialogComponent>
+  ): void {
+    this.deleteTaskSubmitting.set(false);
+    const status = err instanceof HttpErrorResponse ? err.status : null;
+
+    if (status === 404) {
+      // Idempotent-delete success — remove locally and run success path.
+      this.boardState.applyDeletedTask(task.id, task.columnId);
+      this.onTaskDeleteSuccess(task, ref);
+      return;
+    }
+    if (status === 403) {
+      // Task 403 surfaces INLINE (not a toast) per the copy matrix — the
+      // user already has the panel open; stacking a toast on a collapsing
+      // panel is noisy.
+      this.deleteTaskError.set("You don't have permission to delete this task");
+      this.syncDeleteTaskInputs(ref);
+      return;
+    }
+    if (status === 0) {
+      this.deleteTaskError.set("Couldn't reach the server — try again");
+      this.syncDeleteTaskInputs(ref);
+      return;
+    }
+    // 500, other, parse failure — retry-in-place is valid for 500 (task
+    // preserved server-side). Single generic copy per the matrix.
+    this.deleteTaskError.set("Couldn't delete task — please try again");
+    this.syncDeleteTaskInputs(ref);
   }
 }

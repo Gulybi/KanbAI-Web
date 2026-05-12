@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   TasksApiService,
   mapTaskCreateErrorToUserMessage,
+  mapTaskDeleteErrorToUserMessage,
   mapTaskDescriptionErrorToUserMessage,
   mapTaskListErrorToUserMessage,
   mapTaskMoveErrorToUserMessage
@@ -731,6 +732,71 @@ describe('TasksApiService', () => {
         kind: 'inline',
         text: TASK_DESCRIPTION_COPY.INLINE_ERROR_GENERIC_SAVE
       });
+    });
+  });
+
+  describe('deleteTask()', () => {
+    it('issues a DELETE to /task/{taskId} with the id URL-encoded', () => {
+      const taskId = 'task with space';
+      service.deleteTask(taskId).subscribe();
+      const req = httpMock.expectOne(
+        `${baseUrl}/${encodeURIComponent(taskId)}`
+      );
+      expect(req.request.method).toBe('DELETE');
+      expect(req.request.body).toBeNull();
+      req.flush(null, { status: 204, statusText: 'No Content' });
+    });
+
+    it('completes on 204', () => {
+      let completed = false;
+      service.deleteTask('t-1').subscribe({
+        complete: () => (completed = true)
+      });
+      httpMock
+        .expectOne(`${baseUrl}/t-1`)
+        .flush(null, { status: 204, statusText: 'No Content' });
+      expect(completed).toBe(true);
+    });
+
+    it('surfaces HttpErrorResponse on non-2xx', () => {
+      let caught: unknown;
+      service.deleteTask('t-1').subscribe({
+        next: () => {},
+        error: e => (caught = e)
+      });
+      httpMock
+        .expectOne(`${baseUrl}/t-1`)
+        .flush(null, { status: 500, statusText: 'Server Error' });
+      expect(caught).toBeInstanceOf(HttpErrorResponse);
+    });
+  });
+
+  describe('mapTaskDeleteErrorToUserMessage()', () => {
+    const make = (status: number) =>
+      new HttpErrorResponse({ status, statusText: 'x' });
+
+    it('maps status 0 to the verbatim network copy', () => {
+      expect(mapTaskDeleteErrorToUserMessage(make(0))).toBe(
+        "Couldn't reach the server — try again"
+      );
+    });
+    it('maps 403 to the permission copy', () => {
+      expect(mapTaskDeleteErrorToUserMessage(make(403))).toBe(
+        "You don't have permission to delete this task"
+      );
+    });
+    it('maps 500 to the generic delete-failure copy (retry-in-place)', () => {
+      expect(mapTaskDeleteErrorToUserMessage(make(500))).toBe(
+        "Couldn't delete task — please try again"
+      );
+    });
+    it('maps other statuses and plain errors to the generic delete-failure copy', () => {
+      expect(mapTaskDeleteErrorToUserMessage(make(400))).toBe(
+        "Couldn't delete task — please try again"
+      );
+      expect(mapTaskDeleteErrorToUserMessage(new Error('x'))).toBe(
+        "Couldn't delete task — please try again"
+      );
     });
   });
 });

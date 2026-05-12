@@ -180,3 +180,85 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ---- Destructive footer zone (issue #96) ------------------------------
+   Sits INSIDE .task-detail-panel__body so it scrolls with the body rather
+   than pinning to the viewport. A short "Danger zone" label sits above a
+   single outline-red Delete button — outline (not solid) so the dialog's
+   solid coral primary remains the true destructive terminus. */
+.task-detail-panel__destructive-zone {
+  display: flex;
+  flex-direction: column;
+  gap: $space-xs;
+
+  padding-top: $space-lg;
+  margin-top: $space-md;
+  border-top: 1px solid $border-light;
+}
+
+.task-detail-panel__destructive-label {
+  margin: 0;
+
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: $text-secondary;
+}
+
+.task-detail-panel__delete-btn {
+  appearance: none;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-xs;
+
+  align-self: flex-start;
+
+  padding: $space-sm $space-md;
+  min-height: 44px;
+
+  background: transparent;
+  color: $status-high;
+  border: 1px solid $status-high;
+  border-radius: $radius-md;
+
+  font-family: $font-family-base;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  line-height: 1;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    color            $motion-fast;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    color: currentColor;
+  }
+
+  &:hover:not(:disabled) {
+    background-color: $status-high;
+    color: $text-inverse;
+  }
+
+  &:active:not(:disabled) { transform: translateY(1px); }
+
+  &:focus-visible {
+    outline: 2px solid $status-high;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: #{$bp-md - 1px}) {
+    align-self: stretch;
+    width: 100%;
+  }
+}

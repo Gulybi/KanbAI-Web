@@ -1,4 +1,11 @@
 <div class="board-page">
+  @if (currentProject(); as proj) {
+    <app-board-header
+      [project]="proj"
+      (deleteProjectRequested)="openDeleteProjectDialog()"
+    />
+  }
+
   @if (moveError()) {
     <div
       class="board-page__move-error"
@@ -125,6 +132,7 @@
           (addTaskRequested)="openAddTaskFlow(column.id)"
           (addTaskSubmitted)="handleAddTaskSubmit(column.id, $event)"
           (addTaskCancelled)="handleAddTaskCancel(column.id)"
+          (deleteColumnRequested)="openDeleteColumnDialog($event)"
         />
       }
       <div class="board-page__trailing-slot">
@@ -157,6 +165,7 @@
       (panelClosed)="handleTaskDetailClosed()"
       (fileSelected)="handleAttachmentSelected($event)"
       (taskNotFound)="handleTaskNotFound()"
+      (deleteTaskRequested)="openDeleteTaskDialog($event)"
     />
   }
 

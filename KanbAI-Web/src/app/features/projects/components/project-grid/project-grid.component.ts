@@ -25,6 +25,9 @@ export class ProjectGridComponent {
   /** Re-emitted from `ProjectCardComponent` when the card is activated. */
   @Output() openBoard = new EventEmitter<ProjectSummary>();
 
+  /** Re-emitted from `ProjectCardComponent` when the Delete menu item fires (issue #96). */
+  @Output() deleteProjectRequested = new EventEmitter<ProjectSummary>();
+
   protected trackById(_index: number, project: ProjectSummary): string {
     return project.id;
   }

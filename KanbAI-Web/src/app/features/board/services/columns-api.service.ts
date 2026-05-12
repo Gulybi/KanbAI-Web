@@ -17,7 +17,7 @@ import {
  * `'create'` was added by issue #70; `'list'` was the original operation
  * shipped with #47.
  */
-export type ColumnOperation = 'list' | 'create';
+export type ColumnOperation = 'list' | 'create' | 'delete';
 
 @Injectable({ providedIn: 'root' })
 export class ColumnsApiService {
@@ -78,6 +78,18 @@ export class ColumnsApiService {
       })
     );
   }
+
+  /**
+   * `DELETE /api/column/{id}` — removes a column and cascades its tasks
+   * server-side. Backend returns `204 No Content` on success (or `404`
+   * if already gone — caller treats 404 as success per the copy matrix);
+   * no envelope on the wire, non-2xx surfaces as `HttpErrorResponse` on
+   * the Observable's error branch. Issue #96.
+   */
+  deleteColumn(columnId: string): Observable<void> {
+    const url = `${this.apiUrl}/${encodeURIComponent(columnId)}`;
+    return this.http.delete<void>(url);
+  }
 }
 
 /**
@@ -92,6 +104,23 @@ export function mapColumnErrorToUserMessage(
   error: unknown,
   operation: ColumnOperation
 ): string {
+  // `'delete'` branches first because its copy matrix differs materially:
+  // no session-expired re-mapping on 401/403 (context doc routes 403 to a
+  // permission-specific string), and 404 is a SUCCESS — the smart parent
+  // never calls this mapper for 404 on delete. See dashboard/board-page
+  // smart-parent submit handlers.
+  if (operation === 'delete') {
+    if (error instanceof HttpErrorResponse) {
+      if (error.status === 0) {
+        return "Couldn't reach the server — try again";
+      }
+      if (error.status === 403) {
+        return "You don't have permission to delete this column";
+      }
+    }
+    return "Couldn't delete column — please try again";
+  }
+
   if (error instanceof HttpErrorResponse) {
     if (error.status === 0) {
       return "We couldn't reach the server. Please check your connection and try again.";
@@ -124,6 +153,9 @@ function operationGenericCopy(operation: ColumnOperation): string {
   switch (operation) {
     case 'create':
       return "We couldn't add a column. Please try again.";
+    case 'delete':
+      // `delete` is handled upstream — this branch exists for exhaustiveness.
+      return "Couldn't delete column — please try again";
     case 'list':
     default:
       return "We couldn't load this board. Please try again.";

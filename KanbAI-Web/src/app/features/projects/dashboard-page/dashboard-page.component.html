@@ -13,6 +13,7 @@
           [projects]="$any(vm()).projects"
           (manageMembersClick)="openMembersDialog($event)"
           (openBoard)="openBoard($event)"
+          (deleteProjectRequested)="openDeleteProjectDialog($event)"
         ></app-project-grid>
       }
       @case ('empty') {

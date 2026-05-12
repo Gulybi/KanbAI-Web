@@ -133,6 +133,18 @@ export class TasksApiService {
     const url = `${this.apiUrl}/${encodeURIComponent(taskId)}/description`;
     return this.http.delete<void>(url);
   }
+
+  /**
+   * `DELETE /api/task/{taskId}` (issue #96). Backend returns `204` on
+   * success, `403` for non-members, `404` for idempotent already-gone,
+   * and `500` when physical attachment deletion fails (task preserved
+   * server-side → retry-in-place is valid). Non-2xx surfaces as
+   * `HttpErrorResponse` on the Observable's error branch; no envelope.
+   */
+  deleteTask(taskId: string): Observable<void> {
+    const url = `${this.apiUrl}/${encodeURIComponent(taskId)}`;
+    return this.http.delete<void>(url);
+  }
 }
 
 /**
@@ -226,6 +238,28 @@ export function mapTaskListErrorToUserMessage(error: unknown): string {
     return "We couldn't load this board. Please try again.";
   }
   return "We couldn't load this board. Please try again.";
+}
+
+/**
+ * Error copy for a failed task delete (issue #96). Verbatim strings frozen
+ * in issue_96_context.md. Never exposes status codes, URLs, stack traces,
+ * or envelope error arrays. 404 is NOT handled here — callers treat 404 as
+ * success (backend-authoritative: task is already gone). The backend's
+ * 500-default string "An unexpected error occurred." must never reach the
+ * UI — this mapper substitutes the verbatim context-doc copy.
+ */
+export function mapTaskDeleteErrorToUserMessage(error: unknown): string {
+  if (error instanceof HttpErrorResponse) {
+    if (error.status === 0) {
+      return "Couldn't reach the server — try again";
+    }
+    if (error.status === 403) {
+      return "You don't have permission to delete this task";
+    }
+    // 500, other 5xx, 400, parse failure → single generic delete copy.
+    return "Couldn't delete task — please try again";
+  }
+  return "Couldn't delete task — please try again";
 }
 
 /** Operation passed into `mapTaskDescriptionErrorToUserMessage`. */

@@ -4,19 +4,28 @@ import {
   EventEmitter,
   Input,
   Output,
+  ViewEncapsulation,
   computed,
   signal
 } from '@angular/core';
 import { CommonModule, DatePipe, TitleCasePipe } from '@angular/common';
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+
 import { ProjectSummary } from '../../models/project.model';
+import { DELETE_PROJECT_DISABLED_COPY } from '../../constants/delete-project-copy';
 
 @Component({
   selector: 'app-project-card',
   standalone: true,
-  imports: [CommonModule, DatePipe, TitleCasePipe],
+  imports: [CommonModule, DatePipe, TitleCasePipe, CdkMenuTrigger, CdkMenu, CdkMenuItem],
   templateUrl: './project-card.component.html',
   styleUrl: './project-card.component.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  // ViewEncapsulation.None so the `.kanbai-menu` CDK-overlay chrome styled
+  // alongside this component can reach the menu panel. Every selector the
+  // component styles is scoped under `.project-card` or `.kanbai-menu` so
+  // the unencapsulated rules never leak onto unrelated surfaces.
+  encapsulation: ViewEncapsulation.None
 })
 export class ProjectCardComponent {
   private readonly _project = signal<ProjectSummary | null>(null);
@@ -32,6 +41,13 @@ export class ProjectCardComponent {
 
   /** Emitted when the owner-only Manage-members icon-button is activated. */
   @Output() manageMembersClick = new EventEmitter<ProjectSummary>();
+
+  /**
+   * Emitted when the kebab menu's "Delete project" item is activated. Only
+   * emits when the current viewer's role is Owner (the item is rendered as
+   * `aria-disabled` for non-owners — see `canDeleteProject`). Issue #96.
+   */
+  @Output() deleteProjectRequested = new EventEmitter<ProjectSummary>();
 
   /**
    * Emitted when the card host is activated (click, Enter, or Space).
@@ -72,6 +88,15 @@ export class ProjectCardComponent {
   /** True when the viewer owns this project and can manage its members. */
   protected readonly canManage = computed(() => this.roleVariant() === 'owner');
 
+  /** True when the Delete menu item is enabled (owner only). Issue #96. */
+  protected readonly canDeleteProject = computed(() => this.roleVariant() === 'owner');
+
+  /** Accessible label for the kebab trigger. Names the project. */
+  protected readonly kebabAriaLabel = computed(() => `Actions for ${this.project.name}`);
+
+  /** Hint copy under the disabled Delete row for non-owners. */
+  protected readonly deleteDisabledHint = DELETE_PROJECT_DISABLED_COPY;
+
   /** Formatted date string, or "—" if the ISO value is unparseable. */
   protected readonly formattedDate = computed(() => {
     const current = this._project();
@@ -90,6 +115,31 @@ export class ProjectCardComponent {
     // Prevent the parent card's click/tabindex interactions from firing.
     event.stopPropagation();
     this.manageMembersClick.emit(this.project);
+  }
+
+  /**
+   * Kebab click handler. Stops propagation so the card host does not also
+   * interpret the click as "open board" — CDK's own menu trigger does not
+   * stop the DOM event from reaching ancestor handlers.
+   */
+  protected onKebabClick(event: Event): void {
+    event.stopPropagation();
+  }
+
+  /** Keyboard activation on the kebab — same concern as onKebabClick. */
+  protected onKebabKey(event: Event): void {
+    event.stopPropagation();
+  }
+
+  /**
+   * "Delete project" menu item activation. Only emits when the viewer is
+   * Owner; the non-owner row is `aria-disabled` and has no click handler.
+   */
+  protected onDeleteProjectActivate(): void {
+    if (!this.canDeleteProject()) {
+      return;
+    }
+    this.deleteProjectRequested.emit(this.project);
   }
 
   protected onCardActivate(event: MouseEvent): void {
@@ -118,8 +168,14 @@ export class ProjectCardComponent {
   }
 
   private isInsideManageButton(target: EventTarget | null): boolean {
-    return target instanceof Element
-      && !!target.closest('.project-card__manage-btn');
+    if (!(target instanceof Element)) {
+      return false;
+    }
+    // The kebab trigger is NOT a Manage button — but it shares the
+    // "don't open the board when I click this" contract, so we extend the
+    // guard to any header-action button. Keeping the method name for
+    // backwards-compat with existing call sites.
+    return !!target.closest('.project-card__manage-btn, .project-card__menu-btn');
   }
 
   private isTextBeingSelected(event: MouseEvent): boolean {

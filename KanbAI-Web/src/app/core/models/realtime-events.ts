@@ -22,7 +22,8 @@ export const REALTIME_EVENT = {
   ColumnDeleted: 'ColumnDeleted',
   TaskCreated: 'TaskCreated',
   TaskMoved: 'TaskMoved',
-  TaskUpdated: 'TaskUpdated'
+  TaskUpdated: 'TaskUpdated',
+  TaskDeleted: 'TaskDeleted'
 } as const;
 
 export type RealtimeEventName = typeof REALTIME_EVENT[keyof typeof REALTIME_EVENT];
@@ -146,4 +147,20 @@ export interface TaskUpdatedEvent {
   assignedId: string | null;
   createdAt: string; // ISO-8601
   updatedAt: string; // ISO-8601
+}
+
+/**
+ * Payload of `TaskDeleted`, emitted by `DELETE /api/task/{taskId}` (issue #96).
+ * Backend scopes the event to the joined project group — the wire payload is
+ * `{ taskId, columnId }`; `projectId` is not included because attribution
+ * happens server-side via group membership.
+ *
+ * CASCADE: this event is NOT emitted for tasks removed as a side-effect of
+ * `DELETE /api/project/{id}` or `DELETE /api/column/{id}`. Clients must
+ * remove child tasks locally from the parent `ProjectDeleted` /
+ * `ColumnDeleted` event — see BoardStateService.onColumnDeleted cascade.
+ */
+export interface TaskDeletedEvent {
+  taskId: string;
+  columnId: string;
 }

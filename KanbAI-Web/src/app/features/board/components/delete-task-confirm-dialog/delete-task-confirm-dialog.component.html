@@ -1,0 +1,61 @@
+<h2
+  id="delete-task-confirm-heading"
+  class="delete-task-confirm__heading"
+>Delete this task?</h2>
+
+<p class="delete-task-confirm__body">
+  '<strong>{{ data.taskTitle }}</strong>' and all its attachments will be permanently deleted. This cannot be undone.
+</p>
+
+@if (inlineError(); as msg) {
+  <div
+    class="delete-task-confirm__error"
+    role="alert"
+  >
+    <svg
+      class="delete-task-confirm__error-icon"
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+    <p class="delete-task-confirm__error-text">{{ msg }}</p>
+  </div>
+}
+
+<div class="delete-task-confirm__actions">
+  <button
+    type="button"
+    class="delete-task-confirm__cancel"
+    [disabled]="submitting()"
+    (click)="onCancel()"
+  >Cancel</button>
+
+  <button
+    type="button"
+    class="delete-task-confirm__confirm"
+    [disabled]="submitting()"
+    (click)="onConfirm()"
+  >
+    @if (submitting()) {
+      <span
+        class="delete-task-confirm__spinner"
+        aria-hidden="true"
+      ></span>
+      <span>Deleting&hellip;</span>
+    } @else {
+      <span>Delete task</span>
+    }
+  </button>
+</div>
