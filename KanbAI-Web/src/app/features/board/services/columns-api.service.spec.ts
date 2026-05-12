@@ -345,4 +345,73 @@ describe('ColumnsApiService', () => {
       );
     });
   });
+
+  describe('deleteColumn()', () => {
+    it('issues a DELETE to /column/{id} with the id URL-encoded', () => {
+      const columnId = 'col with space';
+      service.deleteColumn(columnId).subscribe();
+
+      const req = httpMock.expectOne(
+        `${baseUrl}/${encodeURIComponent(columnId)}`
+      );
+      expect(req.request.method).toBe('DELETE');
+      expect(req.request.body).toBeNull();
+      req.flush(null, { status: 204, statusText: 'No Content' });
+    });
+
+    it('completes on 204', () => {
+      let completed = false;
+      service.deleteColumn('col-1').subscribe({
+        complete: () => (completed = true)
+      });
+      httpMock
+        .expectOne(`${baseUrl}/col-1`)
+        .flush(null, { status: 204, statusText: 'No Content' });
+      expect(completed).toBe(true);
+    });
+
+    it('surfaces HTTP errors through the error branch (404 / 403 / 500)', () => {
+      let caught: unknown;
+      service.deleteColumn('col-1').subscribe({
+        next: () => {},
+        error: e => (caught = e)
+      });
+      httpMock
+        .expectOne(`${baseUrl}/col-1`)
+        .flush(null, { status: 404, statusText: 'Not Found' });
+      expect(caught).toBeInstanceOf(HttpErrorResponse);
+    });
+  });
+
+  describe('mapColumnErrorToUserMessage() with operation="delete"', () => {
+    const make = (status: number) =>
+      new HttpErrorResponse({ status, statusText: 'x' });
+
+    it('maps status 0 (network) to the verbatim network copy', () => {
+      expect(mapColumnErrorToUserMessage(make(0), 'delete')).toBe(
+        "Couldn't reach the server — try again"
+      );
+    });
+
+    it('maps 403 to the permission copy', () => {
+      expect(mapColumnErrorToUserMessage(make(403), 'delete')).toBe(
+        "You don't have permission to delete this column"
+      );
+    });
+
+    it('maps 500 / other to the generic delete-failure copy', () => {
+      expect(mapColumnErrorToUserMessage(make(500), 'delete')).toBe(
+        "Couldn't delete column — please try again"
+      );
+      expect(mapColumnErrorToUserMessage(make(400), 'delete')).toBe(
+        "Couldn't delete column — please try again"
+      );
+    });
+
+    it('maps non-HttpErrorResponse to the generic delete-failure copy', () => {
+      expect(mapColumnErrorToUserMessage(new Error('x'), 'delete')).toBe(
+        "Couldn't delete column — please try again"
+      );
+    });
+  });
 });

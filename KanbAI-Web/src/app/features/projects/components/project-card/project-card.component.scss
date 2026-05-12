@@ -202,3 +202,170 @@
     }
   }
 }
+
+/* ---- Kebab trigger (issue #96) ---------------------------------------- */
+.project-card__menu-btn {
+  appearance: none;
+  background-color: transparent;
+  border: 1px solid transparent;
+  padding: 0;
+  margin: 0;
+
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $radius-circle;
+
+  color: $text-secondary;
+  cursor: pointer;
+
+  // Reveal on card hover or on keyboard focus of the trigger itself.
+  opacity: 0;
+  transition:
+    opacity         $motion-fast,
+    background-color $motion-fast,
+    color           $motion-fast;
+
+  .project-card:hover &,
+  &:focus-visible,
+  &[aria-expanded='true'] {
+    opacity: 1;
+  }
+
+  @media (pointer: coarse) {
+    opacity: 1;
+    width: 44px;
+    height: 44px;
+  }
+
+  &:hover:not(:disabled) {
+    background-color: $bg-sidebar-light;
+    color: $text-primary;
+  }
+
+  &:active:not(:disabled) {
+    background-color: $brand-primary-light;
+    color: $text-primary;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  &:focus:not(:focus-visible) { outline: none; }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+
+    @media (pointer: coarse) { width: 20px; height: 20px; }
+  }
+}
+
+/* ---- Shared CDK menu panel / items (issue #96) -------------------------
+   Emitted globally because ProjectCardComponent uses ViewEncapsulation.None
+   so the CDK overlay's rendered menu panel can be styled. Selectors are
+   top-level classes (.kanbai-menu / .kanbai-menuitem) so the same stylesheet
+   can be consumed by BoardHeaderComponent and BoardColumnComponent — each
+   of those components inlines a parallel block of the same rules rather
+   than depending on this one (keeps each component independently deletable).
+   ----------------------------------------------------------------------- */
+.kanbai-menu {
+  min-width: 200px;
+  padding: $space-xxs 0;
+
+  background: $bg-main;
+  border: 1px solid $border-light;
+  border-radius: $radius-md;
+  box-shadow: $shadow-dropdown;
+
+  animation: kanbai-menu-enter $motion-fast both;
+
+  @media (prefers-reduced-motion: reduce) { animation-duration: 0.01ms; }
+}
+
+.kanbai-menuitem {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  column-gap: $space-xs;
+  align-items: center;
+
+  width: 100%;
+  padding: $space-xs $space-md;
+  min-height: 40px;
+
+  appearance: none;
+  background: transparent;
+  border: 0;
+  text-align: left;
+
+  font-family: $font-family-base;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-normal;
+  color: $text-primary;
+
+  cursor: pointer;
+  transition: background-color $motion-fast;
+
+  @media (pointer: coarse) { min-height: 44px; }
+
+  &:hover,
+  &.cdk-focused,
+  &:focus-visible {
+    background-color: $bg-sidebar-light;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: -2px;
+  }
+
+  &.kanbai-menuitem--destructive {
+    .kanbai-menuitem__icon { color: $status-high; }
+  }
+
+  &[aria-disabled='true'] {
+    cursor: not-allowed;
+
+    .kanbai-menuitem__label { opacity: 0.5; }
+    .kanbai-menuitem__icon { opacity: 0.5; }
+
+    &:hover, &.cdk-focused { background: transparent; }
+  }
+
+  .kanbai-menuitem__icon {
+    width: 16px;
+    height: 16px;
+    color: $text-secondary;
+  }
+
+  &.kanbai-menuitem--with-hint {
+    grid-template-rows: auto auto;
+    row-gap: $space-xxs;
+
+    .kanbai-menuitem__icon { grid-row: 1 / span 2; margin-top: 2px; }
+    .kanbai-menuitem__label { grid-column: 2; grid-row: 1; }
+    .kanbai-menuitem__hint {
+      grid-column: 2;
+      grid-row: 2;
+      font-size: $font-size-sm;
+      font-weight: $font-weight-regular;
+      color: $text-secondary;
+      line-height: $line-height-tight;
+      // Keep the hint at full $text-secondary — not dimmed by aria-disabled
+      // (per design-spec mitigation: dimming would fall below AA contrast).
+      opacity: 1;
+    }
+  }
+}
+
+@keyframes kanbai-menu-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

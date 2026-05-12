@@ -94,6 +94,7 @@ Factories in code: `ApiResponse.Ok(...)`, `ApiResponse<T>.Ok(data, ...)`, `ApiRe
 | `PUT` | `/api/task/{taskId}/move` | JWT | `MoveTaskDto` | `200` — `ApiResponse<TaskResponseDto>` |
 | `PUT` | `/api/task/{taskId}/description` | JWT | `UpdateTaskDescriptionDto` | `200` — `ApiResponse<TaskResponseDto>` |
 | `DELETE` | `/api/task/{taskId}/description` | JWT | — | `204` |
+| `DELETE` | `/api/task/{taskId}` | JWT | — | `204` / `403` / `404` / `500` |
 
 **Create task** failures (examples): `404` column not found; `403` not a project member; `400` missing title, assignee not found, or assignee not a member.
 
@@ -102,6 +103,18 @@ Factories in code: `ApiResponse.Ok(...)`, `ApiResponse<T>.Ok(data, ...)`, `ApiRe
 **Update task description** failures: `400` — `"Task description cannot be empty."` (whitespace-only after trim) or `"Task description cannot exceed 10,000 characters."`; `403` — `"You are not a member of this project."`; `404` — `"Task not found."`. On success, the task's `content` is replaced with the trimmed value and a `TaskUpdated` SignalR event is broadcast.
 
 **Clear task description** failures: `403` — `"You are not a member of this project."`; `404` — `"Task not found."`. On success, the task's `content` is set to `null`, the endpoint returns `204 No Content`, and a `TaskUpdated` SignalR event is broadcast.
+
+**Delete task** (`DELETE /api/task/{taskId}`) failures: `403` — `"You are not a member of this project."`; `404` — `"Task not found."` (also returned on the second call of a repeat delete — idempotent from the frontend's perspective); `500` — `"An unexpected error occurred."` (physical attachment file deletion failed — locked file, permission error — or a path-traversal attempt was detected in an `Asset.StorageKey`; in this case the task is preserved for retry).
+
+On success, the endpoint returns `204 No Content`, and:
+
+- All `Asset` rows for the task are removed via EF Core cascade (`DeleteBehavior.Cascade`), and all `TaskComment` rows are removed by the same cascade.
+- Physical attachment files under `FileStorage:StoragePath` are deleted from disk **before** the DB transaction commits. If any file fails to delete, the task is **not** deleted and the endpoint returns `500` (fail-safe: no orphaned DB rows). If a physical file is missing (orphaned DB record), a warning is logged and the operation continues.
+- A `TaskDeleted` SignalR event is broadcast to `project_{projectId}` with `TaskDeletedEventDto` (`taskId` + `columnId`).
+
+**Cascade behavior (Option B, documented in issue #90):** Tasks removed as side-effects of `DELETE /api/project/{id}` or `DELETE /api/column/{id}` do **not** emit individual `TaskDeleted` events. Only the parent event (`ProjectDeleted` or `ColumnDeleted`) is emitted; clients must remove children locally based on the parent event.
+
+Any project member (Owner or Member role) can delete any task in the project — there is no "task author only" restriction.
 
 ---
 
@@ -163,6 +176,7 @@ All events are broadcast to the group `project_{projectId lowercase}`. Payloads 
 | `TaskCreated` | `POST /api/task/column/{columnId}` | `TaskResponseDto` |
 | `TaskMoved` | `PUT /api/task/{taskId}/move` | `TaskMovedEventDto` |
 | `TaskUpdated` | `PUT /api/task/{taskId}/description`, `DELETE /api/task/{taskId}/description` | `TaskResponseDto` |
+| `TaskDeleted` | `DELETE /api/task/{taskId}` | `TaskDeletedEventDto` |
 | `AssetUploadStarted` | `POST /api/attachment/task/{taskId}` | `AssetStatusEventDto` (status `Pending`) |
 | `AssetProcessing` | `POST /api/attachment/task/{taskId}` | `AssetStatusEventDto` (status `Processing`) |
 | `AssetCompleted` | `POST /api/attachment/task/{taskId}` | `AssetResponseDto` (status `Completed`) |
@@ -175,7 +189,7 @@ Broadcasts happen after the EF Core `SaveChangesAsync` succeeds. Broadcast failu
 
 **Task description updates:** Both `PUT /api/task/{taskId}/description` and `DELETE /api/task/{taskId}/description` emit the same `TaskUpdated` event with the post-mutation `TaskResponseDto`. Clients should reconcile by `id` and use `content` as the source of truth (it is `null` after a clear).
 
-> ⚠️ **Not yet broadcast:** `ProjectCreated` (no group exists at creation time), and no `TaskDeleted` event exists yet because a task-delete endpoint is not implemented. Clients relying on `GET /api/project` after page load will still reflect new projects.
+> ⚠️ **Not yet broadcast:** `ProjectCreated` (no group exists at creation time). Clients relying on `GET /api/project` after page load will still reflect new projects.
 
 ---
 
@@ -378,6 +392,13 @@ Returned by `POST /api/attachment/task/{taskId}` and as the payload of the `Asse
 | `oldTaskOrder` | `number` | Previous order index |
 | `newTaskOrder` | `number` | New order index |
 | `task` | `TaskResponseDto` | Full post-move task state |
+
+**`TaskDeletedEventDto`** — payload of `TaskDeleted`
+
+| JSON property | Type | Notes |
+|---------------|------|--------|
+| `taskId` | `string` (GUID) | The task that was deleted |
+| `columnId` | `string` (GUID) | Column the task was in at the moment of deletion — use to scope the removal client-side (a lookup would fail because the task is already gone server-side). No `projectId` because the group the event was delivered on already carries that context. |
 
 **`AssetStatusEventDto`** — payload of `AssetUploadStarted` and `AssetProcessing`
 

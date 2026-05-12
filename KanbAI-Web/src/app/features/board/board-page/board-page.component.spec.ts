@@ -1,8 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { WritableSignal, signal } from '@angular/core';
 import { CdkDragDrop } from '@angular/cdk/drag-drop';
+import { Dialog } from '@angular/cdk/dialog';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
@@ -12,6 +13,13 @@ import { BoardStateService } from '../state/board-state.service';
 import { ColumnsApiService } from '../services/columns-api.service';
 import { TasksApiService } from '../services/tasks-api.service';
 import { AttachmentsStateService } from '../../attachments/state/attachments-state.service';
+import { ProjectsApiService } from '../../projects/services/projects-api.service';
+import { ProjectStateService } from '../../projects/state/project-state.service';
+import { ToastService } from '../../../core/services/toast.service';
+import { ProjectSummary } from '../../projects/models/project.model';
+import { DeleteProjectConfirmDialogComponent } from '../../projects/components/delete-project-confirm-dialog/delete-project-confirm-dialog.component';
+import { DeleteColumnConfirmDialogComponent } from '../components/delete-column-confirm-dialog/delete-column-confirm-dialog.component';
+import { DeleteTaskConfirmDialogComponent } from '../components/delete-task-confirm-dialog/delete-task-confirm-dialog.component';
 import {
   BoardColumn,
   BoardTask,
@@ -1794,6 +1802,594 @@ describe('BoardPageComponent', () => {
 
         // The component guards against firing the task read for A.
         expect(tasksApi.getTasksForProject).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #96 — Delete project / column / task orchestration (board page)
+  // ----------------------------------------------------------------------
+
+  describe('Delete orchestration (issue #96)', () => {
+    interface DeleteHarness {
+      component: BoardPageComponent;
+      fixture: ComponentFixture<BoardPageComponent>;
+      boardStateMock: {
+        currentProjectId: WritableSignal<string | null>;
+        columns: WritableSignal<BoardColumn[]>;
+        tasksByColumnId: WritableSignal<Record<string, BoardTask[]>>;
+        enterBoard: ReturnType<typeof vi.fn>;
+        leaveBoard: ReturnType<typeof vi.fn>;
+        setColumns: ReturnType<typeof vi.fn>;
+        setTasks: ReturnType<typeof vi.fn>;
+        applyOptimisticTaskMove: ReturnType<typeof vi.fn>;
+        rollbackOptimisticTaskMove: ReturnType<typeof vi.fn>;
+        reconcileServerTaskMove: ReturnType<typeof vi.fn>;
+        applyCreatedColumn: ReturnType<typeof vi.fn>;
+        applyCreatedTask: ReturnType<typeof vi.fn>;
+        applyDeletedColumn: ReturnType<typeof vi.fn>;
+        applyDeletedTask: ReturnType<typeof vi.fn>;
+        deleteColumn: ReturnType<typeof vi.fn>;
+        deleteTask: ReturnType<typeof vi.fn>;
+      };
+      projectStateMock: {
+        projects: WritableSignal<ProjectSummary[]>;
+        hasLoaded: WritableSignal<boolean>;
+        applyDeletedProject: ReturnType<typeof vi.fn>;
+      };
+      projectsApiMock: { deleteProject: ReturnType<typeof vi.fn> };
+      toastMock: {
+        show: ReturnType<typeof vi.fn>;
+        announce: ReturnType<typeof vi.fn>;
+        dismissCurrent: ReturnType<typeof vi.fn>;
+        currentToast: WritableSignal<unknown>;
+        currentAnnouncement: WritableSignal<string>;
+      };
+      dialogMock: { open: ReturnType<typeof vi.fn> };
+      routerMock: { navigate: ReturnType<typeof vi.fn> };
+      lastDialog: {
+        confirmClicked$: Subject<void>;
+        closed$: Subject<unknown>;
+        close: ReturnType<typeof vi.fn>;
+        setInput: ReturnType<typeof vi.fn>;
+      };
+    }
+
+    async function mountForDelete(project: ProjectSummary): Promise<DeleteHarness> {
+      TestBed.resetTestingModule();
+
+      const boardStateMock = {
+        currentProjectId: signal<string | null>(project.id),
+        columns: signal<BoardColumn[]>([]),
+        tasksByColumnId: signal<Record<string, BoardTask[]>>({}),
+        enterBoard: vi.fn(),
+        leaveBoard: vi.fn(),
+        setColumns: vi.fn(),
+        setTasks: vi.fn(),
+        applyOptimisticTaskMove: vi.fn(),
+        rollbackOptimisticTaskMove: vi.fn(),
+        reconcileServerTaskMove: vi.fn(),
+        applyCreatedColumn: vi.fn(),
+        applyCreatedTask: vi.fn(),
+        applyDeletedColumn: vi.fn(),
+        applyDeletedTask: vi.fn(),
+        deleteColumn: vi.fn(() => of(undefined)),
+        deleteTask: vi.fn(() => of(undefined))
+      };
+      const projectStateMock = {
+        projects: signal<ProjectSummary[]>([project]),
+        hasLoaded: signal(true),
+        applyDeletedProject: vi.fn()
+      };
+      const projectsApiMock = {
+        deleteProject: vi.fn(() => of(undefined))
+      };
+      const toastMock = {
+        show: vi.fn(),
+        announce: vi.fn(),
+        dismissCurrent: vi.fn(),
+        currentToast: signal(null),
+        currentAnnouncement: signal('')
+      };
+
+      const lastDialog = {
+        confirmClicked$: new Subject<void>(),
+        closed$: new Subject<unknown>(),
+        close: vi.fn(),
+        setInput: vi.fn()
+      };
+      const dialogMock = {
+        open: vi.fn(() => {
+          // Refresh Subjects per `open` so successive dialogs start clean.
+          lastDialog.confirmClicked$ = new Subject<void>();
+          lastDialog.closed$ = new Subject<unknown>();
+          lastDialog.close = vi.fn();
+          lastDialog.setInput = vi.fn();
+          return {
+            componentInstance: { confirmClicked: lastDialog.confirmClicked$ },
+            componentRef: { setInput: lastDialog.setInput },
+            closed: lastDialog.closed$.asObservable(),
+            close: lastDialog.close
+          };
+        })
+      };
+      const routerMock = { navigate: vi.fn(() => Promise.resolve(true)) };
+
+      await TestBed.configureTestingModule({
+        imports: [BoardPageComponent],
+        providers: [
+          {
+            provide: ActivatedRoute,
+            useValue: createFakeActivatedRoute(project.id)
+          },
+          { provide: BoardStateService, useValue: boardStateMock },
+          {
+            provide: ColumnsApiService,
+            useValue: { getColumnsForProject: vi.fn(() => of([])), createColumn: vi.fn(() => of({})) }
+          },
+          {
+            provide: TasksApiService,
+            useValue: {
+              moveTask: vi.fn(() => of({})),
+              createTask: vi.fn(() => of({})),
+              getTasksForProject: vi.fn(() => of([]))
+            }
+          },
+          {
+            provide: AttachmentsStateService,
+            useValue: createMockAttachmentsState()
+          },
+          { provide: ProjectsApiService, useValue: projectsApiMock },
+          { provide: ProjectStateService, useValue: projectStateMock },
+          { provide: ToastService, useValue: toastMock },
+          { provide: Dialog, useValue: dialogMock },
+          { provide: Router, useValue: routerMock }
+        ]
+      }).compileComponents();
+
+      const fixture = TestBed.createComponent(BoardPageComponent);
+      fixture.detectChanges();
+
+      return {
+        component: fixture.componentInstance,
+        fixture,
+        boardStateMock,
+        projectStateMock,
+        projectsApiMock,
+        toastMock,
+        dialogMock,
+        routerMock,
+        lastDialog
+      };
+    }
+
+    function makeProject(partial?: Partial<ProjectSummary>): ProjectSummary {
+      return {
+        id: 'p-1',
+        name: 'Q2 Launch',
+        description: null,
+        role: 'Owner',
+        createdAt: '2026-05-04T00:00:00Z',
+        updatedAt: '2026-05-04T00:00:00Z',
+        ...partial
+      };
+    }
+
+    // ------------------------------------------------------------------
+    // Sub-feature A — delete project from board header
+    // ------------------------------------------------------------------
+    describe('openDeleteProjectDialog (board header)', () => {
+      it('opens the confirm dialog with the currentProject name', async () => {
+        const project = makeProject({ id: 'p-42', name: 'Acme' });
+        const h = await mountForDelete(project);
+        h.component.openDeleteProjectDialog();
+        expect(h.dialogMock.open).toHaveBeenCalledWith(
+          DeleteProjectConfirmDialogComponent,
+          expect.objectContaining({
+            data: { projectName: 'Acme' },
+            ariaLabelledBy: 'delete-project-confirm-heading'
+          })
+        );
+      });
+
+      it('on 204 navigates to /dashboard BEFORE firing the toast/announce', async () => {
+        const project = makeProject({ id: 'p-42', name: 'Acme' });
+        const h = await mountForDelete(project);
+        h.component.openDeleteProjectDialog();
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.projectsApiMock.deleteProject).toHaveBeenCalledWith('p-42');
+        expect(h.projectStateMock.applyDeletedProject).toHaveBeenCalledWith('p-42');
+        expect(h.lastDialog.close).toHaveBeenCalledWith(true);
+        expect(h.routerMock.navigate).toHaveBeenCalledWith(['/dashboard']);
+        // Await the router navigation promise resolution.
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(h.toastMock.show).toHaveBeenCalledWith("Project 'Acme' was deleted");
+        expect(h.toastMock.announce).toHaveBeenCalledWith('Project deleted');
+      });
+
+      it('on 403 closes with permission toast; no mutation; no navigation', async () => {
+        const project = makeProject({ id: 'p-42', name: 'Acme' });
+        const h = await mountForDelete(project);
+        h.projectsApiMock.deleteProject.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 403, statusText: 'x' }))
+        );
+        h.component.openDeleteProjectDialog();
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.projectStateMock.applyDeletedProject).not.toHaveBeenCalled();
+        expect(h.routerMock.navigate).not.toHaveBeenCalled();
+        expect(h.lastDialog.close).toHaveBeenCalledWith(undefined);
+        expect(h.toastMock.show).toHaveBeenCalledWith(
+          'Only the project owner can delete this project',
+          'info'
+        );
+      });
+
+      it('on 0 stays open with verbatim retry copy; second confirm retries in place and succeeds', async () => {
+        const project = makeProject({ id: 'p-42', name: 'Acme' });
+        const h = await mountForDelete(project);
+        h.projectsApiMock.deleteProject
+          .mockReturnValueOnce(
+            throwError(() => new HttpErrorResponse({ status: 0, statusText: 'x' }))
+          )
+          .mockReturnValueOnce(of(undefined));
+
+        h.component.openDeleteProjectDialog();
+        h.lastDialog.confirmClicked$.next();
+        expect(h.lastDialog.setInput).toHaveBeenCalledWith(
+          'inlineError',
+          "Couldn't reach the server — try again"
+        );
+        expect(h.lastDialog.close).not.toHaveBeenCalled();
+
+        h.lastDialog.confirmClicked$.next();
+        expect(h.projectsApiMock.deleteProject).toHaveBeenCalledTimes(2);
+        expect(h.projectStateMock.applyDeletedProject).toHaveBeenCalledWith('p-42');
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // Sub-feature B — delete column
+    // ------------------------------------------------------------------
+    describe('openDeleteColumnDialog', () => {
+      function col(partial?: Partial<BoardColumn>): BoardColumn {
+        return {
+          id: 'col-1',
+          name: 'Doing',
+          colorCode: null,
+          columnOrder: 1,
+          projectId: 'p-1',
+          ...partial
+        };
+      }
+
+      it('passes the correct task count (empty column) to the dialog', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.columns.set([col()]);
+        h.boardStateMock.tasksByColumnId.set({});
+        h.fixture.detectChanges();
+
+        h.component.openDeleteColumnDialog(col());
+        expect(h.dialogMock.open).toHaveBeenCalledWith(
+          DeleteColumnConfirmDialogComponent,
+          expect.objectContaining({
+            data: { columnName: 'Doing', taskCount: 0 }
+          })
+        );
+      });
+
+      it('passes the correct task count (with tasks) to the dialog', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.columns.set([col()]);
+        h.boardStateMock.tasksByColumnId.set({
+          'col-1': [
+            { id: 't-1', title: 'A', content: null, taskOrder: 1, columnId: 'col-1', assignedId: null },
+            { id: 't-2', title: 'B', content: null, taskOrder: 2, columnId: 'col-1', assignedId: null }
+          ]
+        });
+        h.fixture.detectChanges();
+
+        h.component.openDeleteColumnDialog(col());
+        expect(h.dialogMock.open).toHaveBeenCalledWith(
+          DeleteColumnConfirmDialogComponent,
+          expect.objectContaining({ data: { columnName: 'Doing', taskCount: 2 } })
+        );
+      });
+
+      it('on 204 closes dialog and fires verbatim success toast + announce', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.columns.set([col({ name: 'Doing' })]);
+        h.fixture.detectChanges();
+
+        h.component.openDeleteColumnDialog(col({ name: 'Doing' }));
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.boardStateMock.deleteColumn).toHaveBeenCalledWith('col-1');
+        expect(h.lastDialog.close).toHaveBeenCalledWith(true);
+        expect(h.toastMock.show).toHaveBeenCalledWith("Column 'Doing' was deleted");
+        expect(h.toastMock.announce).toHaveBeenCalledWith('Column deleted');
+      });
+
+      it('closes the task detail panel when the currently-open task lives in the deleted column', async () => {
+        const h = await mountForDelete(makeProject());
+        const column = col();
+        const task: BoardTask = {
+          id: 't-open',
+          title: 'Open',
+          content: null,
+          taskOrder: 1,
+          columnId: 'col-1',
+          assignedId: null
+        };
+        h.boardStateMock.columns.set([column]);
+        h.boardStateMock.tasksByColumnId.set({ 'col-1': [task] });
+        h.fixture.detectChanges();
+        h.component.handleTaskOpened(task);
+        h.fixture.detectChanges();
+        expect(h.component.selectedTask()).not.toBeNull();
+
+        h.component.openDeleteColumnDialog(column);
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.component.selectedTask()).toBeNull();
+      });
+
+      it('on 404 treats as success: applyDeletedColumn called, dialog closes, success toast fires', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.columns.set([col({ name: 'Doing' })]);
+        h.boardStateMock.deleteColumn.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 404, statusText: 'x' }))
+        );
+        h.fixture.detectChanges();
+
+        h.component.openDeleteColumnDialog(col({ name: 'Doing' }));
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.boardStateMock.applyDeletedColumn).toHaveBeenCalledWith('col-1');
+        expect(h.lastDialog.close).toHaveBeenCalledWith(true);
+        expect(h.toastMock.show).toHaveBeenCalledWith("Column 'Doing' was deleted");
+        expect(h.toastMock.announce).toHaveBeenCalledWith('Column deleted');
+      });
+
+      it('on 403 closes with the verbatim permission toast; no mutation', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.columns.set([col()]);
+        h.boardStateMock.deleteColumn.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 403, statusText: 'x' }))
+        );
+        h.fixture.detectChanges();
+
+        h.component.openDeleteColumnDialog(col());
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.boardStateMock.applyDeletedColumn).not.toHaveBeenCalled();
+        expect(h.lastDialog.close).toHaveBeenCalledWith(undefined);
+        expect(h.toastMock.show).toHaveBeenCalledWith(
+          "You don't have permission to delete this column",
+          'info'
+        );
+      });
+
+      it('on 0 stays open with verbatim retry copy; dialog is not closed', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.columns.set([col()]);
+        h.boardStateMock.deleteColumn.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 0, statusText: 'x' }))
+        );
+        h.fixture.detectChanges();
+
+        h.component.openDeleteColumnDialog(col());
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.lastDialog.close).not.toHaveBeenCalled();
+        expect(h.lastDialog.setInput).toHaveBeenCalledWith(
+          'inlineError',
+          "Couldn't reach the server — try again"
+        );
+      });
+
+      it('on 500 stays open with verbatim generic copy', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.columns.set([col()]);
+        h.boardStateMock.deleteColumn.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 500, statusText: 'x' }))
+        );
+        h.fixture.detectChanges();
+
+        h.component.openDeleteColumnDialog(col());
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.lastDialog.close).not.toHaveBeenCalled();
+        expect(h.lastDialog.setInput).toHaveBeenCalledWith(
+          'inlineError',
+          "Couldn't delete column — please try again"
+        );
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // Sub-feature C — delete task
+    // ------------------------------------------------------------------
+    describe('openDeleteTaskDialog', () => {
+      function task(partial?: Partial<BoardTask>): BoardTask {
+        return {
+          id: 't-1',
+          title: 'Finalise copy',
+          content: null,
+          taskOrder: 1,
+          columnId: 'col-1',
+          assignedId: null,
+          ...partial
+        };
+      }
+
+      it('opens the dialog with the task title and the correct aria-labelledby', async () => {
+        const h = await mountForDelete(makeProject());
+        h.component.openDeleteTaskDialog(task({ title: 'Finalise copy' }));
+        expect(h.dialogMock.open).toHaveBeenCalledWith(
+          DeleteTaskConfirmDialogComponent,
+          expect.objectContaining({
+            data: { taskTitle: 'Finalise copy' },
+            ariaLabelledBy: 'delete-task-confirm-heading'
+          })
+        );
+      });
+
+      it('on 204 closes the panel + dialog, fires success toast, and announces', async () => {
+        const h = await mountForDelete(makeProject());
+        const t = task({ id: 't-open', columnId: 'col-1', title: 'Finalise copy' });
+        h.boardStateMock.columns.set([
+          { id: 'col-1', name: 'To Do', colorCode: null, columnOrder: 0, projectId: 'p-1' }
+        ]);
+        h.boardStateMock.tasksByColumnId.set({ 'col-1': [t] });
+        h.fixture.detectChanges();
+        h.component.handleTaskOpened(t);
+
+        h.component.openDeleteTaskDialog(t);
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.boardStateMock.deleteTask).toHaveBeenCalledWith('t-open', 'col-1');
+        expect(h.component.selectedTask()).toBeNull();
+        expect(h.lastDialog.close).toHaveBeenCalledWith(true);
+        expect(h.toastMock.show).toHaveBeenCalledWith("Task 'Finalise copy' was deleted");
+        expect(h.toastMock.announce).toHaveBeenCalledWith('Task deleted');
+      });
+
+      it('on 404 treats as success (applyDeletedTask + success toast + panel closes)', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.deleteTask.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 404, statusText: 'x' }))
+        );
+        const t = task({ id: 't-open', title: 'Finalise copy' });
+
+        h.component.openDeleteTaskDialog(t);
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.boardStateMock.applyDeletedTask).toHaveBeenCalledWith('t-open', 'col-1');
+        expect(h.lastDialog.close).toHaveBeenCalledWith(true);
+        expect(h.toastMock.show).toHaveBeenCalledWith("Task 'Finalise copy' was deleted");
+        expect(h.toastMock.announce).toHaveBeenCalledWith('Task deleted');
+      });
+
+      it('on 403 surfaces the permission copy INLINE (not as a toast) and keeps the dialog open', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.deleteTask.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 403, statusText: 'x' }))
+        );
+        h.component.openDeleteTaskDialog(task());
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.lastDialog.close).not.toHaveBeenCalled();
+        expect(h.toastMock.show).not.toHaveBeenCalled();
+        expect(h.lastDialog.setInput).toHaveBeenCalledWith(
+          'inlineError',
+          "You don't have permission to delete this task"
+        );
+      });
+
+      it('on 0 stays open with verbatim retry copy', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.deleteTask.mockReturnValue(
+          throwError(() => new HttpErrorResponse({ status: 0, statusText: 'x' }))
+        );
+        h.component.openDeleteTaskDialog(task());
+        h.lastDialog.confirmClicked$.next();
+
+        expect(h.lastDialog.close).not.toHaveBeenCalled();
+        expect(h.lastDialog.setInput).toHaveBeenCalledWith(
+          'inlineError',
+          "Couldn't reach the server — try again"
+        );
+      });
+
+      it('on 500 stays open with verbatim generic copy; second confirm retries in place and succeeds', async () => {
+        const h = await mountForDelete(makeProject());
+        h.boardStateMock.deleteTask
+          .mockReturnValueOnce(
+            throwError(() => new HttpErrorResponse({ status: 500, statusText: 'x' }))
+          )
+          .mockReturnValueOnce(of(undefined));
+
+        h.component.openDeleteTaskDialog(task({ id: 't-2', title: 'Finalise copy' }));
+        h.lastDialog.confirmClicked$.next();
+        expect(h.lastDialog.setInput).toHaveBeenCalledWith(
+          'inlineError',
+          "Couldn't delete task — please try again"
+        );
+        expect(h.lastDialog.close).not.toHaveBeenCalled();
+
+        h.lastDialog.confirmClicked$.next();
+        expect(h.boardStateMock.deleteTask).toHaveBeenCalledTimes(2);
+        expect(h.lastDialog.close).toHaveBeenCalledWith(true);
+        expect(h.toastMock.show).toHaveBeenCalledWith("Task 'Finalise copy' was deleted");
+      });
+
+      it('hygiene: no error copy surfaces an HTTP status, a /api/ URL, or the backend 500 string', async () => {
+        const h = await mountForDelete(makeProject());
+        const backendMsg = 'An unexpected error occurred.';
+        const error500 = new HttpErrorResponse({
+          status: 500,
+          statusText: 'x',
+          error: backendMsg
+        });
+        const error403 = new HttpErrorResponse({
+          status: 403,
+          statusText: 'x',
+          error: 'You are not a member of this project.'
+        });
+        const error0 = new HttpErrorResponse({ status: 0, statusText: 'x' });
+        for (const err of [error500, error403, error0]) {
+          h.boardStateMock.deleteTask.mockReturnValueOnce(throwError(() => err));
+          h.component.openDeleteTaskDialog(task({ id: `t-${err.status}` }));
+          h.lastDialog.confirmClicked$.next();
+        }
+        const setInputCalls = h.dialogMock.open.mock.results
+          .map(r => (r.value as any).componentRef.setInput.mock?.calls ?? [])
+          .flat();
+        // Walk every inlineError assignment; none may leak backend copy / status / URL.
+        for (const [name, value] of setInputCalls) {
+          if (name !== 'inlineError' || typeof value !== 'string') continue;
+          expect(value).not.toMatch(/\b\d{3}\b/);
+          expect(value).not.toContain('/api/');
+          expect(value).not.toContain('An unexpected error occurred');
+          expect(value).not.toContain('You are not a member of this project');
+        }
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // Real-time: remote ProjectDeleted while on that project's board
+    // ------------------------------------------------------------------
+    describe('Remote ProjectDeleted (on current project)', () => {
+      it('navigates to /dashboard and shows the "another member" toast', async () => {
+        const project = makeProject({ id: 'p-42' });
+        const h = await mountForDelete(project);
+        // Sanity: hasLoaded=true & activeId set from mountForDelete.
+        expect(h.boardStateMock.currentProjectId()).toBe('p-42');
+
+        // Simulate `onProjectDeleted` wiping the project from the dashboard cache.
+        h.projectStateMock.projects.set([]);
+        // Flush the effect.
+        h.fixture.detectChanges();
+        TestBed.flushEffects();
+
+        expect(h.routerMock.navigate).toHaveBeenCalledWith(['/dashboard']);
+        expect(h.toastMock.show).toHaveBeenCalledWith(
+          'This project was deleted by another member',
+          'info'
+        );
+      });
+
+      it('does NOT fire before projectState.hasLoaded is true (pre-hydration guard)', async () => {
+        const project = makeProject({ id: 'p-42' });
+        const h = await mountForDelete(project);
+        h.projectStateMock.hasLoaded.set(false);
+        h.projectStateMock.projects.set([]);
+        TestBed.flushEffects();
+        expect(h.routerMock.navigate).not.toHaveBeenCalled();
+        expect(h.toastMock.show).not.toHaveBeenCalled();
       });
     });
   });

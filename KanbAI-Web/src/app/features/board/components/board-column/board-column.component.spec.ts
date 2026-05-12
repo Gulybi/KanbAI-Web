@@ -47,6 +47,7 @@ function makeTask(partial?: Partial<BoardTask>): BoardTask {
       (addTaskRequested)="onAddTaskRequested()"
       (addTaskSubmitted)="onAddTaskSubmitted($event)"
       (addTaskCancelled)="onAddTaskCancelled()"
+      (deleteColumnRequested)="onDeleteColumnRequested($event)"
     />
   `
 })
@@ -63,6 +64,7 @@ class BoardColumnHostComponent {
   addTaskRequestedCount = 0;
   addTaskSubmittedValues: string[] = [];
   addTaskCancelledCount = 0;
+  deleteColumnRequests: BoardColumn[] = [];
 
   onDropped(event: CdkDragDrop<BoardTask[]>): void {
     this.dropped = event;
@@ -82,6 +84,10 @@ class BoardColumnHostComponent {
 
   onAddTaskCancelled(): void {
     this.addTaskCancelledCount++;
+  }
+
+  onDeleteColumnRequested(column: BoardColumn): void {
+    this.deleteColumnRequests.push(column);
   }
 }
 
@@ -260,6 +266,42 @@ describe('BoardColumnComponent', () => {
       fixture.detectChanges();
       const trigger = fixture.debugElement.query(By.css('.board-column__add-task'));
       expect(trigger.nativeElement.id).toBe('add-task-trigger-col-xyz');
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Kebab menu + Delete column (issue #96)
+  // ------------------------------------------------------------------
+  describe('Delete-column kebab menu (issue #96)', () => {
+    it('renders the kebab trigger with a project-aware aria-label', () => {
+      host.column = makeColumn({ name: 'Doing' });
+      fixture.detectChanges();
+      const btn = fixture.debugElement.query(By.css('.board-column__menu-btn'));
+      expect(btn).toBeTruthy();
+      expect(btn.nativeElement.getAttribute('aria-label')).toBe('Actions for Doing');
+    });
+
+    it('activating Delete emits deleteColumnRequested with the full BoardColumn', () => {
+      host.column = makeColumn({ id: 'col-xyz', name: 'Doing' });
+      fixture.detectChanges();
+      // Invoke the activation hook directly — unit-testing CDK Menu overlay
+      // open + arrow + Enter is out of scope for this spec, consistent with
+      // project-card's pattern.
+      (fixture.debugElement.query(By.css('app-board-column'))
+        .componentInstance as any).onDeleteColumnActivate();
+      expect(host.deleteColumnRequests.length).toBe(1);
+      expect(host.deleteColumnRequests[0].id).toBe('col-xyz');
+      expect(host.deleteColumnRequests[0].name).toBe('Doing');
+    });
+
+    it('the kebab menu item text is exactly "Delete column"', () => {
+      fixture.detectChanges();
+      const btn = fixture.debugElement.query(By.css('.board-column__menu-btn'));
+      btn.nativeElement.click();
+      fixture.detectChanges();
+      const item = document.querySelector('.kanbai-menuitem--destructive');
+      expect(item).toBeTruthy();
+      expect(item!.textContent).toContain('Delete column');
     });
   });
 });

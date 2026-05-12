@@ -3,7 +3,8 @@ import { By } from '@angular/platform-browser';
 import { WritableSignal, signal } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import { Router } from '@angular/router';
-import { Subject, of } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Subject, of, throwError } from 'rxjs';
 import { describe, it, expect, vi } from 'vitest';
 
 import { PartialFailureToastComponent } from '../components/partial-failure-toast/partial-failure-toast.component';
@@ -11,6 +12,7 @@ import { CreateProjectDialogResult } from '../components/create-project-dialog/c
 
 import { DashboardPageComponent } from './dashboard-page.component';
 import { ProjectStateService } from '../state/project-state.service';
+import { ProjectsApiService } from '../services/projects-api.service';
 import { ProjectSummary } from '../models/project.model';
 import { DashboardSkeletonComponent } from '../components/dashboard-skeleton/dashboard-skeleton.component';
 import { ProjectGridComponent } from '../components/project-grid/project-grid.component';
@@ -19,6 +21,8 @@ import { DashboardErrorStateComponent } from '../components/dashboard-error-stat
 import { DashboardHeaderComponent } from '../components/dashboard-header/dashboard-header.component';
 import { CreateProjectDialogComponent } from '../components/create-project-dialog/create-project-dialog.component';
 import { MembersDialogComponent } from '../components/members-dialog/members-dialog.component';
+import { DeleteProjectConfirmDialogComponent } from '../components/delete-project-confirm-dialog/delete-project-confirm-dialog.component';
+import { ToastService } from '../../../core/services/toast.service';
 
 interface ProjectStateMock {
   projects: WritableSignal<ProjectSummary[]>;
@@ -26,6 +30,7 @@ interface ProjectStateMock {
   error: WritableSignal<string | null>;
   hasLoaded: WritableSignal<boolean>;
   loadProjects: ReturnType<typeof vi.fn>;
+  applyDeletedProject: ReturnType<typeof vi.fn>;
 }
 
 interface DialogMock {
@@ -34,6 +39,18 @@ interface DialogMock {
 
 interface RouterMock {
   navigate: ReturnType<typeof vi.fn>;
+}
+
+interface ProjectsApiMock {
+  deleteProject: ReturnType<typeof vi.fn>;
+}
+
+interface ToastServiceMock {
+  show: ReturnType<typeof vi.fn>;
+  announce: ReturnType<typeof vi.fn>;
+  dismissCurrent: ReturnType<typeof vi.fn>;
+  currentToast: WritableSignal<unknown>;
+  currentAnnouncement: WritableSignal<string>;
 }
 
 function makeProjects(count: number): ProjectSummary[] {
@@ -52,13 +69,16 @@ async function mount(): Promise<{
   mock: ProjectStateMock;
   dialog: DialogMock;
   router: RouterMock;
+  projectsApi: ProjectsApiMock;
+  toast: ToastServiceMock;
 }> {
   const mock: ProjectStateMock = {
     projects: signal<ProjectSummary[]>([]),
     isLoading: signal(false),
     error: signal<string | null>(null),
     hasLoaded: signal(false),
-    loadProjects: vi.fn()
+    loadProjects: vi.fn(),
+    applyDeletedProject: vi.fn()
   };
 
   const dialog: DialogMock = {
@@ -72,18 +92,32 @@ async function mount(): Promise<{
     navigate: vi.fn()
   };
 
+  const projectsApi: ProjectsApiMock = {
+    deleteProject: vi.fn(() => of(undefined))
+  };
+
+  const toast: ToastServiceMock = {
+    show: vi.fn(),
+    announce: vi.fn(),
+    dismissCurrent: vi.fn(),
+    currentToast: signal(null),
+    currentAnnouncement: signal('')
+  };
+
   await TestBed.configureTestingModule({
     imports: [DashboardPageComponent],
     providers: [
       { provide: ProjectStateService, useValue: mock },
       { provide: Dialog, useValue: dialog },
-      { provide: Router, useValue: router }
+      { provide: Router, useValue: router },
+      { provide: ProjectsApiService, useValue: projectsApi },
+      { provide: ToastService, useValue: toast }
     ]
   }).compileComponents();
 
   const fixture = TestBed.createComponent(DashboardPageComponent);
   fixture.detectChanges();
-  return { fixture, mock, dialog, router };
+  return { fixture, mock, dialog, router, projectsApi, toast };
 }
 
 describe('DashboardPageComponent', () => {
@@ -457,5 +491,223 @@ describe('DashboardPageComponent', () => {
     fixture.detectChanges();
 
     expect(router.navigate).toHaveBeenCalledWith(['/board', project.id]);
+  });
+
+  // ---------------------------------------------------------------------
+  // Issue #96 — Delete-project orchestration (dashboard)
+  // ---------------------------------------------------------------------
+  describe('openDeleteProjectDialog (issue #96)', () => {
+    /**
+     * Sets up a dashboard mount seeded with `project`, then triggers the
+     * Delete-project flow and exposes the fake dialog + the confirm
+     * emitter the fixture can fire to simulate the user pressing the
+     * destructive primary button.
+     */
+    async function mountWithDeleteFlow(project: ProjectSummary): Promise<{
+      fixture: ComponentFixture<DashboardPageComponent>;
+      mock: ProjectStateMock;
+      dialog: DialogMock;
+      router: RouterMock;
+      projectsApi: ProjectsApiMock;
+      toast: ToastServiceMock;
+      confirmClicked$: Subject<void>;
+      closed$: Subject<unknown>;
+      dialogRefCloseSpy: ReturnType<typeof vi.fn>;
+      setInputSpy: ReturnType<typeof vi.fn>;
+    }> {
+      const ctx = await mount();
+      ctx.mock.projects.set([project]);
+      ctx.mock.hasLoaded.set(true);
+      ctx.fixture.detectChanges();
+
+      const confirmClicked$ = new Subject<void>();
+      const closed$ = new Subject<unknown>();
+      const dialogRefCloseSpy = vi.fn();
+      const setInputSpy = vi.fn();
+      ctx.dialog.open.mockReturnValue({
+        componentInstance: { confirmClicked: confirmClicked$ },
+        componentRef: { setInput: setInputSpy },
+        closed: closed$.asObservable(),
+        close: dialogRefCloseSpy
+      });
+
+      const grid = ctx.fixture.debugElement.query(By.directive(ProjectGridComponent));
+      (grid.componentInstance as ProjectGridComponent).deleteProjectRequested.emit(project);
+      ctx.fixture.detectChanges();
+
+      return { ...ctx, confirmClicked$, closed$, dialogRefCloseSpy, setInputSpy };
+    }
+
+    it('opens the DeleteProjectConfirmDialogComponent with the project name as data', async () => {
+      const project = makeProjects(1)[0];
+      const { dialog } = await mountWithDeleteFlow(project);
+
+      expect(dialog.open).toHaveBeenCalledWith(
+        DeleteProjectConfirmDialogComponent,
+        expect.objectContaining({
+          data: { projectName: project.name },
+          ariaLabelledBy: 'delete-project-confirm-heading',
+          restoreFocus: true,
+          panelClass: 'delete-project-confirm-panel'
+        })
+      );
+    });
+
+    it('on 204 fires exactly one DELETE, applies local removal, closes dialog, and shows toast + announce with verbatim copy', async () => {
+      const project: ProjectSummary = {
+        ...makeProjects(1)[0],
+        id: 'p-42',
+        name: 'Acme'
+      };
+      const { mock, projectsApi, confirmClicked$, toast, dialogRefCloseSpy } =
+        await mountWithDeleteFlow(project);
+      projectsApi.deleteProject.mockReturnValue(of(undefined));
+
+      confirmClicked$.next();
+
+      expect(projectsApi.deleteProject).toHaveBeenCalledTimes(1);
+      expect(projectsApi.deleteProject).toHaveBeenCalledWith('p-42');
+      expect(mock.applyDeletedProject).toHaveBeenCalledWith('p-42');
+      expect(dialogRefCloseSpy).toHaveBeenCalledWith(true);
+      expect(toast.show).toHaveBeenCalledWith("Project 'Acme' was deleted");
+      expect(toast.announce).toHaveBeenCalledWith('Project deleted');
+    });
+
+    it('treats 404 as success (local removal + success toast + announce)', async () => {
+      const project: ProjectSummary = { ...makeProjects(1)[0], id: 'p-42', name: 'Acme' };
+      const { mock, projectsApi, confirmClicked$, toast, dialogRefCloseSpy } =
+        await mountWithDeleteFlow(project);
+      projectsApi.deleteProject.mockReturnValue(
+        throwError(() => new HttpErrorResponse({ status: 404, statusText: 'x' }))
+      );
+
+      confirmClicked$.next();
+
+      expect(mock.applyDeletedProject).toHaveBeenCalledWith('p-42');
+      expect(dialogRefCloseSpy).toHaveBeenCalledWith(true);
+      expect(toast.show).toHaveBeenCalledWith("Project 'Acme' was deleted");
+      expect(toast.announce).toHaveBeenCalledWith('Project deleted');
+    });
+
+    it('on 403 closes the dialog and surfaces the verbatim permission toast; no state mutation', async () => {
+      const project = makeProjects(1)[0];
+      const { mock, projectsApi, confirmClicked$, toast, dialogRefCloseSpy } =
+        await mountWithDeleteFlow(project);
+      projectsApi.deleteProject.mockReturnValue(
+        throwError(() => new HttpErrorResponse({ status: 403, statusText: 'x' }))
+      );
+
+      confirmClicked$.next();
+
+      expect(mock.applyDeletedProject).not.toHaveBeenCalled();
+      expect(dialogRefCloseSpy).toHaveBeenCalledWith(undefined);
+      expect(toast.show).toHaveBeenCalledWith(
+        'Only the project owner can delete this project',
+        'info'
+      );
+      // Success announce must NOT fire on a 403.
+      expect(toast.announce).not.toHaveBeenCalled();
+    });
+
+    it('on network failure (status 0) keeps the dialog open with verbatim inline retry copy', async () => {
+      const project = makeProjects(1)[0];
+      const {
+        mock,
+        projectsApi,
+        confirmClicked$,
+        toast,
+        dialogRefCloseSpy,
+        setInputSpy
+      } = await mountWithDeleteFlow(project);
+      projectsApi.deleteProject.mockReturnValue(
+        throwError(() => new HttpErrorResponse({ status: 0, statusText: 'x' }))
+      );
+
+      confirmClicked$.next();
+
+      expect(mock.applyDeletedProject).not.toHaveBeenCalled();
+      expect(dialogRefCloseSpy).not.toHaveBeenCalled();
+      expect(toast.show).not.toHaveBeenCalled();
+      expect(setInputSpy).toHaveBeenCalledWith(
+        'inlineError',
+        "Couldn't reach the server — try again"
+      );
+    });
+
+    it('on 500 keeps the dialog open with verbatim generic inline copy', async () => {
+      const project = makeProjects(1)[0];
+      const { projectsApi, confirmClicked$, dialogRefCloseSpy, setInputSpy } =
+        await mountWithDeleteFlow(project);
+      projectsApi.deleteProject.mockReturnValue(
+        throwError(() => new HttpErrorResponse({ status: 500, statusText: 'x' }))
+      );
+
+      confirmClicked$.next();
+
+      expect(dialogRefCloseSpy).not.toHaveBeenCalled();
+      expect(setInputSpy).toHaveBeenCalledWith(
+        'inlineError',
+        "Couldn't delete project — please try again"
+      );
+    });
+
+    it('retry-in-place: second confirm after network failure re-issues the DELETE and succeeds', async () => {
+      const project: ProjectSummary = { ...makeProjects(1)[0], id: 'p-42', name: 'Acme' };
+      const { projectsApi, confirmClicked$, mock, toast, dialogRefCloseSpy } =
+        await mountWithDeleteFlow(project);
+      // First attempt: network failure.
+      projectsApi.deleteProject.mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 0, statusText: 'x' }))
+      );
+      // Second attempt: success.
+      projectsApi.deleteProject.mockReturnValueOnce(of(undefined));
+
+      confirmClicked$.next();
+      confirmClicked$.next();
+
+      expect(projectsApi.deleteProject).toHaveBeenCalledTimes(2);
+      expect(mock.applyDeletedProject).toHaveBeenCalledWith('p-42');
+      expect(dialogRefCloseSpy).toHaveBeenCalledWith(true);
+      expect(toast.show).toHaveBeenCalledWith("Project 'Acme' was deleted");
+    });
+
+    it('no error-copy variant contains an HTTP status, a URL, or a raw backend error string (hygiene)', async () => {
+      const project = makeProjects(1)[0];
+      const { projectsApi, confirmClicked$, setInputSpy } =
+        await mountWithDeleteFlow(project);
+      for (const status of [0, 500, 418, 400]) {
+        projectsApi.deleteProject.mockReturnValueOnce(
+          throwError(() => new HttpErrorResponse({ status, statusText: 'x' }))
+        );
+        confirmClicked$.next();
+      }
+      const inlineErrorCalls = setInputSpy.mock.calls.filter(
+        ([name]) => name === 'inlineError'
+      );
+      for (const [, value] of inlineErrorCalls) {
+        if (typeof value !== 'string' || value === null) {
+          continue;
+        }
+        expect(value).not.toMatch(/\b\d{3}\b/); // no HTTP-like status codes
+        expect(value).not.toContain('/api/'); // no endpoint URLs
+        expect(value).not.toContain('An unexpected error occurred');
+      }
+    });
+
+    it('ProjectDeleted silent removal on landing page fires NO toast and NO announcement', async () => {
+      // The dashboard-page is agnostic to the SignalR event — the state
+      // service already removes the project from `projects()` silently.
+      // Verify that mutating `projects()` externally does not trigger any
+      // toast/announce from the dashboard page.
+      const { mock, toast } = await mount();
+      const projects = makeProjects(2);
+      mock.projects.set(projects);
+      mock.hasLoaded.set(true);
+      mock.isLoading.set(false);
+      // Simulate a remote ProjectDeleted via state removing the entry.
+      mock.projects.set([projects[1]]);
+      expect(toast.show).not.toHaveBeenCalled();
+      expect(toast.announce).not.toHaveBeenCalled();
+    });
   });
 });

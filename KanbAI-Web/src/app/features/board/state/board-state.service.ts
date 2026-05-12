@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, Signal, effect, inject } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
+import { tap } from 'rxjs/operators';
 
 import { BaseStateService } from '../../../core/state/base-state.service';
 import { SignalRService } from '../../../core/services/signalr.service';
@@ -9,6 +10,7 @@ import {
   ColumnDeletedEvent,
   REALTIME_EVENT,
   TaskCreatedEvent,
+  TaskDeletedEvent,
   TaskMovedEvent,
   TaskUpdatedEvent
 } from '../../../core/models/realtime-events';
@@ -21,6 +23,8 @@ import {
 } from './board-state.model';
 import { TaskResponseDto } from '../models/task.model';
 import { ColumnResponseDto } from '../models/column.model';
+import { ColumnsApiService } from '../services/columns-api.service';
+import { TasksApiService } from '../services/tasks-api.service';
 
 /**
  * Board-scope state + realtime reconciler.
@@ -39,6 +43,8 @@ export class BoardStateService extends BaseStateService<BoardState> {
   private readonly signalRService = inject(SignalRService);
   private readonly projectStateService = inject(ProjectStateService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly columnsApi = inject(ColumnsApiService);
+  private readonly tasksApi = inject(TasksApiService);
 
   /**
    * Active event subscriptions. Refreshed on every `connectionState → 'connected'`
@@ -92,6 +98,11 @@ export class BoardStateService extends BaseStateService<BoardState> {
         this.signalRService
           .on<TaskUpdatedEvent>(REALTIME_EVENT.TaskUpdated)
           .subscribe(evt => this.onTaskUpdated(evt))
+      );
+      this.subscriptionBag.push(
+        this.signalRService
+          .on<TaskDeletedEvent>(REALTIME_EVENT.TaskDeleted)
+          .subscribe(evt => this.onTaskDeleted(evt))
       );
 
       // If a board session straddled a reconnect, the server-side group
@@ -193,20 +204,102 @@ export class BoardStateService extends BaseStateService<BoardState> {
   }
 
   /**
-   * Remove the column and drop its task bucket. No-op if absent.
+   * Remove the column and drop its task bucket. Delegates to
+   * {@link applyDeletedColumn} (shared with the HTTP-success path, issue #96)
+   * so the SignalR echo and the direct HTTP `deleteColumn` caller agree on
+   * dedupe semantics. The project-id guard remains here so events for
+   * other boards are silently dropped.
    */
   private onColumnDeleted(evt: ColumnDeletedEvent): void {
     if (!evt || evt.projectId !== this.getState().currentProjectId) {
       return;
     }
+    this.applyDeletedColumn(evt.columnId);
+  }
+
+  /**
+   * Issue #96 — public entry point for the originating-client's HTTP-success
+   * path (or 404-as-success) of a column delete. Removes the column and
+   * drops its task bucket (cascade: tasks living in that column are removed
+   * from local state without any per-task `TaskDeleted` event). Silent no-op
+   * if the column is already absent from state — makes the HTTP-success +
+   * SignalR-echo sequence safe for the originating client.
+   */
+  applyDeletedColumn(columnId: string): void {
     const current = this.getState().columns;
-    const nextColumns = current.filter(c => c.id !== evt.columnId);
+    const nextColumns = current.filter(c => c.id !== columnId);
     if (nextColumns.length === current.length) {
       return;
     }
     const tasksByColumnId = { ...this.getState().tasksByColumnId };
-    delete tasksByColumnId[evt.columnId];
+    delete tasksByColumnId[columnId];
     this.setState({ columns: nextColumns, tasksByColumnId });
+  }
+
+  /**
+   * Issue #96 — HTTP-driven column delete. Delegates to `ColumnsApiService`
+   * and, on 2xx, applies the local state mutation via
+   * {@link applyDeletedColumn}. The error branch re-throws the raw
+   * `HttpErrorResponse` so the caller (`BoardPageComponent`) can route by
+   * status per the copy matrix (404-as-success, 403-close-with-toast, etc.).
+   */
+  deleteColumn(columnId: string): Observable<void> {
+    return this.columnsApi
+      .deleteColumn(columnId)
+      .pipe(tap(() => this.applyDeletedColumn(columnId)));
+  }
+
+  /**
+   * Issue #96 — HTTP-driven task delete. `columnId` is carried because the
+   * caller (`BoardPageComponent`) already knows it (the task is currently
+   * open in the panel) and because the state mutation scopes by columnId,
+   * mirroring the `TaskDeletedEvent` wire shape. Success path applies
+   * local state mutation via {@link applyDeletedTask}.
+   */
+  deleteTask(taskId: string, columnId: string): Observable<void> {
+    return this.tasksApi
+      .deleteTask(taskId)
+      .pipe(tap(() => this.applyDeletedTask(taskId, columnId)));
+  }
+
+  /**
+   * Remove the task from `tasksByColumnId[columnId]`. If the resulting
+   * bucket is empty, the key is removed. Silent no-op when the task is not
+   * in state — same precondition as {@link onTaskDeleted}.
+   */
+  applyDeletedTask(taskId: string, columnId: string): void {
+    const buckets = this.getState().tasksByColumnId;
+    const bucket = buckets[columnId];
+    if (!bucket) {
+      return;
+    }
+    const nextBucket = bucket.filter(t => t.id !== taskId);
+    if (nextBucket.length === bucket.length) {
+      return;
+    }
+    const next = { ...buckets };
+    if (nextBucket.length === 0) {
+      delete next[columnId];
+    } else {
+      next[columnId] = nextBucket;
+    }
+    this.setState({ tasksByColumnId: next });
+  }
+
+  /**
+   * SignalR handler for `TaskDeleted` (issue #96). Silent no-op when
+   * `currentProjectId` is null (user navigated away after join) or when the
+   * task is not in local state (already removed by a cascade, or pre-
+   * hydration).
+   */
+  private onTaskDeleted(evt: TaskDeletedEvent): void {
+    if (!evt || this.getState().currentProjectId === null) {
+      return;
+    }
+    if (typeof evt.taskId !== 'string' || typeof evt.columnId !== 'string') {
+      return;
+    }
+    this.applyDeletedTask(evt.taskId, evt.columnId);
   }
 
   /**

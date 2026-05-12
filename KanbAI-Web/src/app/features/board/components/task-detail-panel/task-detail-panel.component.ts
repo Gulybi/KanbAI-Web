@@ -56,6 +56,9 @@ export class TaskDetailPanelComponent {
   /** Re-emitted from the Description section when save/clear returns 404. */
   readonly taskNotFound = output<void>();
 
+  /** Emitted when the panel's "Delete task" button is activated (issue #96). */
+  readonly deleteTaskRequested = output<BoardTask>();
+
   readonly titleId = computed(() => `task-detail-title-${this.task().id}`);
 
   /** All in-flight upload rows for the currently-open task. */
@@ -195,6 +198,11 @@ export class TaskDetailPanelComponent {
   /** Re-emits the child's 404 signal up to the board page. */
   handleTaskNotFound(): void {
     this.taskNotFound.emit();
+  }
+
+  /** Activation hook for the destructive footer "Delete task" button. */
+  handleDeleteTask(): void {
+    this.deleteTaskRequested.emit(this.task());
   }
 
   trackUploadById(_index: number, upload: AttachmentUpload): string {

@@ -1,0 +1,137 @@
+@use 'src/styles/variables/colors' as *;
+@use 'src/styles/variables/spacing' as *;
+@use 'src/styles/variables/radius' as *;
+@use 'src/styles/variables/shadows' as *;
+@use 'src/styles/variables/typography' as *;
+@use 'src/styles/variables/motion' as *;
+@use 'src/styles/variables/breakpoints' as *;
+
+:host {
+  position: fixed;
+  right: $space-md;
+  bottom: $space-md;
+  z-index: 1000;
+
+  max-width: 420px;
+  width: calc(100vw - #{$space-md * 2});
+
+  // The host is purely a positioning container — never intercept clicks
+  // in the (common) empty gap between toasts.
+  pointer-events: none;
+
+  @include respond-to('md') {
+    right: $space-lg;
+    bottom: $space-lg;
+    width: auto;
+    min-width: 320px;
+  }
+}
+
+.toast-host__toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  column-gap: $space-sm;
+  align-items: center;
+
+  padding: $space-sm $space-md;
+
+  background: $bg-card;
+  border: 1px solid $border-light;
+  border-radius: $radius-md;
+  box-shadow: $shadow-dropdown;
+
+  font-family: $font-family-base;
+  color: $text-primary;
+
+  // Re-enable interaction for the card itself (the host is click-through).
+  pointer-events: auto;
+
+  animation: toast-host-enter $motion-slow both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 0.01ms;
+  }
+
+  &.toast-host__toast--success {
+    border-left: 4px solid $brand-primary;
+
+    .toast-host__toast-icon { color: $brand-primary; }
+  }
+
+  &.toast-host__toast--info {
+    border-left: 4px solid $text-secondary;
+
+    .toast-host__toast-icon { color: $text-secondary; }
+  }
+}
+
+.toast-host__toast-icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+
+.toast-host__toast-message {
+  margin: 0;
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+  color: $text-primary;
+  word-break: break-word;
+}
+
+.toast-host__toast-dismiss {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 28px;
+  height: 28px;
+
+  background: transparent;
+  color: $text-tertiary;
+  border: 0;
+  border-radius: $radius-circle;
+  cursor: pointer;
+
+  transition:
+    background-color $motion-fast,
+    color            $motion-fast;
+
+  svg { width: 14px; height: 14px; }
+
+  &:hover {
+    background: $bg-sidebar-light;
+    color: $text-primary;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand-primary;
+    outline-offset: 2px;
+  }
+
+  @media (max-width: #{$bp-md - 1px}) {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+// Visually-hidden polite live region. Never seen by sighted users — only
+// consumed by ATs. No shared utility class exists in src/styles yet; see
+// design spec §2 "Known token gaps".
+.toast-host__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes toast-host-enter {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

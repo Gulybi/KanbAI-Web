@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { Signal, WritableSignal, signal } from '@angular/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Subject } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Subject, of, throwError } from 'rxjs';
 
 import { BoardStateService } from './board-state.service';
 import {
@@ -15,12 +16,15 @@ import {
   ColumnDeletedEvent,
   REALTIME_EVENT,
   TaskCreatedEvent,
+  TaskDeletedEvent,
   TaskMovedEvent,
   TaskUpdatedEvent
 } from '../../../core/models/realtime-events';
 import { BoardColumn } from './board-state.model';
 import { TaskResponseDto } from '../models/task.model';
 import { ColumnResponseDto } from '../models/column.model';
+import { ColumnsApiService } from '../services/columns-api.service';
+import { TasksApiService } from '../services/tasks-api.service';
 
 interface MockSignalRService {
   connectionState: WritableSignal<SignalRConnectionState>;
@@ -1926,6 +1930,294 @@ describe('BoardStateService', () => {
 
       consoleLogSpy.mockRestore();
       consoleErrorSpy.mockRestore();
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // Issue #96 — delete column/task state surface
+  // ----------------------------------------------------------------------
+
+  describe('applyDeletedColumn() cascade invariant (issue #96)', () => {
+    it('drops the task bucket even when the column holds tasks (cascade)', () => {
+      service.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-1',
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      for (const id of ['t-a', 't-b', 't-c']) {
+        signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+          id,
+          title: id,
+          content: null,
+          taskOrder: 1,
+          columnId: 'col-1',
+          assignedId: null,
+          createdAt: '',
+          updatedAt: ''
+        });
+      }
+      expect(service.tasksByColumnId()['col-1']).toHaveLength(3);
+
+      service.applyDeletedColumn('col-1');
+
+      // Cascade invariant: entire bucket dropped with no per-task TaskDeleted.
+      expect(service.columns()).toEqual([]);
+      expect(service.tasksByColumnId()['col-1']).toBeUndefined();
+    });
+
+    it('is a silent no-op when the column is not in state', () => {
+      service.enterBoard(PROJECT_ID);
+      expect(() => service.applyDeletedColumn('col-missing')).not.toThrow();
+      expect(service.columns()).toEqual([]);
+    });
+  });
+
+  describe('applyDeletedTask() (issue #96)', () => {
+    beforeEach(() => {
+      service.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-1',
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-1',
+        title: 'T1',
+        content: null,
+        taskOrder: 1,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-2',
+        title: 'T2',
+        content: null,
+        taskOrder: 2,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+    });
+
+    it('removes the task from its bucket and preserves siblings', () => {
+      service.applyDeletedTask('t-1', 'col-1');
+      const bucket = service.tasksByColumnId()['col-1'];
+      expect(bucket.map(t => t.id)).toEqual(['t-2']);
+    });
+
+    it('drops the bucket key entirely when the last task is removed', () => {
+      service.applyDeletedTask('t-1', 'col-1');
+      service.applyDeletedTask('t-2', 'col-1');
+      expect(service.tasksByColumnId()['col-1']).toBeUndefined();
+    });
+
+    it('is a silent no-op when the bucket is missing (absorbs stale events)', () => {
+      expect(() => service.applyDeletedTask('t-stale', 'col-ghost')).not.toThrow();
+      expect(service.tasksByColumnId()['col-1']).toHaveLength(2);
+    });
+
+    it('is a silent no-op when the task is not in the bucket (stale event after cascade)', () => {
+      expect(() => service.applyDeletedTask('t-gone', 'col-1')).not.toThrow();
+      expect(service.tasksByColumnId()['col-1']).toHaveLength(2);
+    });
+  });
+
+  describe('onTaskDeleted() SignalR handler (issue #96)', () => {
+    beforeEach(() => {
+      service.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-1',
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-1',
+        title: 'T1',
+        content: null,
+        taskOrder: 1,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+    });
+
+    it('removes the task when the event arrives with a matching {taskId, columnId}', () => {
+      signalRMock.emit<TaskDeletedEvent>(REALTIME_EVENT.TaskDeleted, {
+        taskId: 't-1',
+        columnId: 'col-1'
+      });
+      expect(service.tasksByColumnId()['col-1']).toBeUndefined();
+    });
+
+    it('is a silent no-op when currentProjectId is null (post-leaveBoard)', () => {
+      service.leaveBoard();
+      expect(() =>
+        signalRMock.emit<TaskDeletedEvent>(REALTIME_EVENT.TaskDeleted, {
+          taskId: 't-1',
+          columnId: 'col-1'
+        })
+      ).not.toThrow();
+      expect(service.tasksByColumnId()).toEqual({});
+    });
+
+    it('is a silent no-op for an unknown task id', () => {
+      signalRMock.emit<TaskDeletedEvent>(REALTIME_EVENT.TaskDeleted, {
+        taskId: 't-ghost',
+        columnId: 'col-1'
+      });
+      expect(service.tasksByColumnId()['col-1']).toHaveLength(1);
+    });
+
+    it('is a silent no-op on malformed payloads', () => {
+      expect(() => {
+        signalRMock.emit(REALTIME_EVENT.TaskDeleted, undefined as unknown as TaskDeletedEvent);
+        signalRMock.emit(REALTIME_EVENT.TaskDeleted, {} as TaskDeletedEvent);
+        signalRMock.emit(REALTIME_EVENT.TaskDeleted, {
+          taskId: undefined as unknown as string,
+          columnId: 'col-1'
+        } as TaskDeletedEvent);
+      }).not.toThrow();
+      expect(service.tasksByColumnId()['col-1']).toHaveLength(1);
+    });
+
+    it('absorbs a stale TaskDeleted that arrives after the column has been cascaded (#96 edge 8)', () => {
+      // ColumnDeleted (cascade) fires first, clearing the bucket without
+      // emitting per-child TaskDeleted. A late TaskDeleted for a task that
+      // *was* in that bucket must be a no-op.
+      signalRMock.emit<ColumnDeletedEvent>(REALTIME_EVENT.ColumnDeleted, {
+        columnId: 'col-1',
+        projectId: PROJECT_ID
+      });
+      expect(service.tasksByColumnId()['col-1']).toBeUndefined();
+
+      expect(() =>
+        signalRMock.emit<TaskDeletedEvent>(REALTIME_EVENT.TaskDeleted, {
+          taskId: 't-1',
+          columnId: 'col-1'
+        })
+      ).not.toThrow();
+      // Still no bucket, still no columns.
+      expect(service.tasksByColumnId()).toEqual({});
+      expect(service.columns()).toEqual([]);
+    });
+  });
+
+  describe('deleteColumn() / deleteTask() HTTP wrappers (issue #96)', () => {
+    let columnsApiMock: { deleteColumn: ReturnType<typeof vi.fn> };
+    let tasksApiMock: { deleteTask: ReturnType<typeof vi.fn> };
+    let localService: BoardStateService;
+
+    beforeEach(() => {
+      columnsApiMock = { deleteColumn: vi.fn() };
+      tasksApiMock = { deleteTask: vi.fn() };
+      TestBed.resetTestingModule();
+      signalRMock = createMockSignalRService('connected');
+      projectsSig = signal<ProjectSummary[]>([makeProject({ id: PROJECT_ID })]);
+
+      TestBed.configureTestingModule({
+        providers: [
+          BoardStateService,
+          { provide: SignalRService, useValue: signalRMock },
+          {
+            provide: ProjectStateService,
+            useValue: {
+              projects: projectsSig.asReadonly(),
+              isLoading: signal(false),
+              error: signal<string | null>(null),
+              hasLoaded: signal(true),
+              loadProjects: () => undefined
+            }
+          },
+          { provide: ColumnsApiService, useValue: columnsApiMock },
+          { provide: TasksApiService, useValue: tasksApiMock }
+        ]
+      });
+      localService = TestBed.inject(BoardStateService);
+      TestBed.flushEffects();
+      localService.enterBoard(PROJECT_ID);
+      signalRMock.emit<ColumnCreatedEvent>(REALTIME_EVENT.ColumnCreated, {
+        id: 'col-1',
+        name: 'To Do',
+        colorCode: null,
+        columnOrder: 1,
+        projectId: PROJECT_ID,
+        createdAt: '',
+        updatedAt: ''
+      });
+      signalRMock.emit<TaskCreatedEvent>(REALTIME_EVENT.TaskCreated, {
+        id: 't-1',
+        title: 'T1',
+        content: null,
+        taskOrder: 1,
+        columnId: 'col-1',
+        assignedId: null,
+        createdAt: '',
+        updatedAt: ''
+      });
+    });
+
+    it('deleteColumn success path delegates to the API and applies local removal', () => {
+      columnsApiMock.deleteColumn.mockReturnValue(of(undefined));
+      let completed = false;
+      localService.deleteColumn('col-1').subscribe({ complete: () => (completed = true) });
+
+      expect(columnsApiMock.deleteColumn).toHaveBeenCalledWith('col-1');
+      expect(completed).toBe(true);
+      expect(localService.columns()).toEqual([]);
+      expect(localService.tasksByColumnId()['col-1']).toBeUndefined();
+    });
+
+    it('deleteColumn error path re-throws the raw HttpErrorResponse and leaves state intact', () => {
+      const err = new HttpErrorResponse({ status: 500, statusText: 'x' });
+      columnsApiMock.deleteColumn.mockReturnValue(throwError(() => err));
+      let caught: unknown;
+      localService.deleteColumn('col-1').subscribe({
+        next: () => {},
+        error: e => (caught = e)
+      });
+      expect(caught).toBe(err);
+      // No state mutation on error — the caller handles copy mapping.
+      expect(localService.columns().map(c => c.id)).toEqual(['col-1']);
+      expect(localService.tasksByColumnId()['col-1']).toHaveLength(1);
+    });
+
+    it('deleteTask success path delegates to the API and applies local removal', () => {
+      tasksApiMock.deleteTask.mockReturnValue(of(undefined));
+      let completed = false;
+      localService.deleteTask('t-1', 'col-1').subscribe({ complete: () => (completed = true) });
+
+      expect(tasksApiMock.deleteTask).toHaveBeenCalledWith('t-1');
+      expect(completed).toBe(true);
+      expect(localService.tasksByColumnId()['col-1']).toBeUndefined();
+    });
+
+    it('deleteTask error path re-throws the raw HttpErrorResponse and leaves state intact', () => {
+      const err = new HttpErrorResponse({ status: 403, statusText: 'x' });
+      tasksApiMock.deleteTask.mockReturnValue(throwError(() => err));
+      let caught: unknown;
+      localService.deleteTask('t-1', 'col-1').subscribe({
+        next: () => {},
+        error: e => (caught = e)
+      });
+      expect(caught).toBe(err);
+      expect(localService.tasksByColumnId()['col-1']).toHaveLength(1);
     });
   });
 });

@@ -287,4 +287,85 @@ describe('ProjectCardComponent', () => {
 
     expect(emitted).toBeUndefined();
   });
+
+  // ------------------------------------------------------------------
+  // Kebab + Delete project menu item (issue #96)
+  // ------------------------------------------------------------------
+  it('renders the kebab trigger for the Owner', async () => {
+    const ownerFixture = await mount({ ...base, role: 'Owner' });
+    expect(ownerFixture.nativeElement.querySelector('.project-card__menu-btn')).toBeTruthy();
+  });
+
+  it('renders the kebab trigger for the Member too (enablement is controlled at the menu-item level)', async () => {
+    const memberFixture = await mount({ ...base, role: 'Member' });
+    expect(memberFixture.nativeElement.querySelector('.project-card__menu-btn')).toBeTruthy();
+  });
+
+  it('kebab trigger aria-label names the project', async () => {
+    const fixture = await mount({ ...base, name: 'Q2 Launch' });
+    const btn = fixture.nativeElement.querySelector('.project-card__menu-btn');
+    expect(btn.getAttribute('aria-label')).toBe('Actions for Q2 Launch');
+  });
+
+  it('clicking the kebab does not emit openBoard (propagation stopped)', async () => {
+    const fixture = await mount(base);
+    let opened = false;
+    fixture.componentInstance.openBoard.subscribe(() => (opened = true));
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('.project-card__menu-btn');
+    btn.click();
+    expect(opened).toBe(false);
+  });
+
+  it('activating Delete emits deleteProjectRequested when viewer is Owner', async () => {
+    const fixture = await mount({ ...base, role: 'Owner' });
+    let emitted: ProjectSummary | undefined;
+    fixture.componentInstance.deleteProjectRequested.subscribe(p => (emitted = p));
+
+    // Directly invoke the component's activation hook rather than driving CDK
+    // Menu open + arrow-down + Enter from the test — exercising CDK overlay
+    // is out of scope for a unit test, and the handler is the meaningful gate.
+    (fixture.componentInstance as any).onDeleteProjectActivate();
+
+    expect(emitted).toBeTruthy();
+    expect(emitted!.id).toBe(base.id);
+  });
+
+  it('Delete activation is a silent no-op for Member (not emitted)', async () => {
+    const fixture = await mount({ ...base, role: 'Member' });
+    let emitted = false;
+    fixture.componentInstance.deleteProjectRequested.subscribe(() => (emitted = true));
+
+    (fixture.componentInstance as any).onDeleteProjectActivate();
+
+    expect(emitted).toBe(false);
+  });
+
+  // Issue #96 QA gap — non-owner disabled hint copy must render verbatim
+  // (edge case #7). Also verifies the aria-disabled marker the AC requires.
+  it('renders the disabled Delete row with the verbatim hint copy for non-Owner', async () => {
+    const fixture = await mount({ ...base, role: 'Member' });
+    // CDK Menu content lives inside an <ng-template> so it only renders
+    // after the overlay opens. Click the kebab trigger to force the overlay.
+    const kebab: HTMLButtonElement = fixture.nativeElement.querySelector(
+      '.project-card__menu-btn'
+    );
+    kebab.click();
+    fixture.detectChanges();
+
+    // CDK overlay renders the menu into document.body, not inside the
+    // component tree — query the document scope.
+    const disabledRow = document.querySelector(
+      '.kanbai-menuitem--with-hint'
+    ) as HTMLElement | null;
+    expect(disabledRow).toBeTruthy();
+    expect(disabledRow!.getAttribute('aria-disabled')).toBe('true');
+    const hint = disabledRow!.querySelector('.kanbai-menuitem__hint');
+    expect(hint).toBeTruthy();
+    expect(hint!.textContent!.trim()).toBe(
+      'Only the project owner can delete this project'
+    );
+    // And no enabled Delete button on this row.
+    const enabledBtn = disabledRow!.querySelector('button[cdkMenuItem]');
+    expect(enabledBtn).toBeNull();
+  });
 });

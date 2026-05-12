@@ -1,0 +1,61 @@
+<h2
+  id="delete-project-confirm-heading"
+  class="delete-project-confirm__heading"
+>Delete this project?</h2>
+
+<p class="delete-project-confirm__body">
+  '<strong>{{ data.projectName }}</strong>' and everything inside it (columns, tasks, attachments) will be permanently deleted. This cannot be undone.
+</p>
+
+@if (inlineError(); as msg) {
+  <div
+    class="delete-project-confirm__error"
+    role="alert"
+  >
+    <svg
+      class="delete-project-confirm__error-icon"
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+    <p class="delete-project-confirm__error-text">{{ msg }}</p>
+  </div>
+}
+
+<div class="delete-project-confirm__actions">
+  <button
+    type="button"
+    class="delete-project-confirm__cancel"
+    [disabled]="submitting()"
+    (click)="onCancel()"
+  >Cancel</button>
+
+  <button
+    type="button"
+    class="delete-project-confirm__confirm"
+    [disabled]="submitting()"
+    (click)="onConfirm()"
+  >
+    @if (submitting()) {
+      <span
+        class="delete-project-confirm__spinner"
+        aria-hidden="true"
+      ></span>
+      <span>Deleting&hellip;</span>
+    } @else {
+      <span>Delete project</span>
+    }
+  </button>
+</div>

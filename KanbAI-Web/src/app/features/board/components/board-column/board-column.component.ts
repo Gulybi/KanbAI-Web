@@ -1,11 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ViewEncapsulation,
   computed,
   input,
   output
 } from '@angular/core';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 
 import { BoardColumn, BoardTask } from '../../state/board-state.model';
 import { TaskCardComponent } from '../task-card/task-card.component';
@@ -28,10 +30,21 @@ import { BoardAddTaskComponent } from '../board-add-task/board-add-task.componen
 @Component({
   selector: 'app-board-column',
   standalone: true,
-  imports: [DragDropModule, TaskCardComponent, BoardAddTaskComponent],
+  imports: [
+    DragDropModule,
+    TaskCardComponent,
+    BoardAddTaskComponent,
+    CdkMenuTrigger,
+    CdkMenu,
+    CdkMenuItem
+  ],
   templateUrl: './board-column.component.html',
   styleUrl: './board-column.component.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  // Needed so the CDK-rendered overlay menu picks up `.kanbai-menu` /
+  // `.kanbai-menuitem` styles declared in this component. All unencapsulated
+  // selectors are top-level or under `.board-column__menu-btn`.
+  encapsulation: ViewEncapsulation.None
 })
 export class BoardColumnComponent {
   /** Source of name / colorCode / id. */
@@ -88,6 +101,20 @@ export class BoardColumnComponent {
 
   /** User cancelled the add-task form (Escape or Cancel button). */
   readonly addTaskCancelled = output<void>();
+
+  // ---------------- Issue #96 — delete-column flow ----------------
+
+  /** User activated the "Delete column" menu item. */
+  readonly deleteColumnRequested = output<BoardColumn>();
+
+  /** Accessible label for the column kebab — names the column for SRs. */
+  readonly kebabAriaLabel = computed(
+    () => `Actions for ${this.column().name}`
+  );
+
+  protected onDeleteColumnActivate(): void {
+    this.deleteColumnRequested.emit(this.column());
+  }
 
 
   /** Stable drop-list id used by the parent's `dropListIds` selector. */

@@ -318,8 +318,19 @@ export class ProjectStateService extends BaseStateService<ProjectState> {
     if (!evt || typeof evt.projectId !== 'string') {
       return;
     }
+    this.applyDeletedProject(evt.projectId);
+  }
+
+  /**
+   * Issue #96 — public entry point for the originating-client's HTTP-success
+   * path (or 404-as-success path) of a project delete. Removes the matching
+   * id from the cache; silent no-op if already absent (two-tab race). Shares
+   * state-mutation semantics with {@link onProjectDeleted} so the SignalR
+   * echo that follows the HTTP 204 is absorbed as a no-op.
+   */
+  applyDeletedProject(projectId: string): void {
     const current = this.getState().projects;
-    const next = current.filter(p => p.id !== evt.projectId);
+    const next = current.filter(p => p.id !== projectId);
     if (next.length !== current.length) {
       this.setState({ projects: next });
     }
